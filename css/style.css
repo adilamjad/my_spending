@@ -989,6 +989,24 @@ button:active {
   filter: brightness(1.1);
 }
 
+.btn-import {
+  padding: 14px 18px;
+  border-radius: var(--radius-lg);
+  background: var(--grad-primary);
+  color: #ffffff;
+  font-weight: 700;
+  font-size: 1rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  box-shadow: 0 6px 20px var(--primary-glow);
+}
+
+.btn-import:hover {
+  filter: brightness(1.1);
+}
+
 /* CSV Preview Table */
 .csv-preview-container {
   max-height: 180px;

@@ -322,6 +322,36 @@
           </button>
         </div>
 
+        <!-- CSV Import Card -->
+        <div class="settings-card">
+          <div class="export-hero-banner" style="background: linear-gradient(135deg, rgba(59, 130, 246, 0.15) 0%, rgba(37, 99, 235, 0.25) 100%); border-color: rgba(59, 130, 246, 0.35);">
+            <div class="export-banner-icon" style="background: var(--primary);">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" width="24" height="24">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
+              </svg>
+            </div>
+            <div>
+              <h2 style="font-size: 1rem; font-weight: 700;">CSV File Import</h2>
+              <p style="font-size: 0.8rem; color: var(--text-secondary); margin-top: 2px;">
+                Upload and import expenditures from a CSV spreadsheet.
+              </p>
+            </div>
+          </div>
+
+          <p style="font-size: 0.8rem; color: var(--text-secondary); line-height: 1.4;">
+            Accepts CSV files with headers: <code>Date, Time, Category, Amount, Notes</code>. You can choose to merge or replace current expenditures before importing.
+          </p>
+
+          <input type="file" id="import-csv-file-input" accept=".csv,text/csv" style="display: none;">
+
+          <button type="button" class="btn-import" id="btn-trigger-import-csv">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" width="20" height="20">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
+            </svg>
+            Select &amp; Import CSV File
+          </button>
+        </div>
+
         <!-- Preferences & Data Settings -->
         <div class="settings-card">
           <h2 class="section-title">Preferences</h2>
@@ -604,6 +634,53 @@
 
           <button type="button" class="submit-btn" id="budget-alert-modal-close" style="padding: 14px; width: 100%;">
             Acknowledge Alert
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- CSV Import Preview & Confirmation Modal -->
+    <div id="import-csv-modal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="modal-import-title">
+      <div class="modal-sheet" style="max-height: 88vh; display: flex; flex-direction: column;">
+        <div class="modal-handle"></div>
+        <div style="display: flex; justify-content: space-between; align-items: baseline;">
+          <h3 id="modal-import-title" class="modal-title">Confirm CSV Import</h3>
+          <span style="font-size: 0.82rem; font-weight: 700; color: var(--accent-green);" id="import-modal-total-badge">SAR 0.00</span>
+        </div>
+        <p class="modal-desc" id="import-modal-desc" style="margin-bottom: 12px;">
+          Review the expenditures found in your CSV file before importing.
+        </p>
+
+        <!-- Import Mode Selection -->
+        <div style="background: var(--bg-primary); border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 12px; margin-bottom: 12px;">
+          <span style="font-size: 0.78rem; font-weight: 700; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.05em; display: block; margin-bottom: 8px;">
+            Import Option
+          </span>
+          <div style="display: flex; flex-direction: column; gap: 8px; font-size: 0.85rem;">
+            <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+              <input type="radio" name="csv-import-mode" value="merge" checked id="import-mode-merge">
+              <span><b>Merge</b> (Adds new records &amp; skips existing duplicates)</span>
+            </label>
+            <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; color: var(--accent-red);">
+              <input type="radio" name="csv-import-mode" value="replace" id="import-mode-replace">
+              <span><b>Replace All</b> (Deletes current records &amp; replaces with CSV)</span>
+            </label>
+          </div>
+        </div>
+
+        <!-- Preview Table -->
+        <div style="display: flex; justify-content: space-between; font-size: 0.78rem; color: var(--text-secondary); margin-bottom: 6px;">
+          <span>Sample Rows Preview</span>
+          <span id="import-modal-count-badge" style="font-weight: 600;">0 records</span>
+        </div>
+        <div class="csv-preview-container" id="import-csv-preview-container" style="max-height: 180px; margin-bottom: 16px;">
+          <!-- Rendered via JS -->
+        </div>
+
+        <div class="modal-actions" style="margin-top: auto; padding-top: 8px;">
+          <button type="button" class="btn-secondary" id="import-csv-cancel-btn">Cancel</button>
+          <button type="button" class="btn-import" id="import-csv-confirm-btn" style="flex: 1; padding: 12px;">
+            Confirm Import
           </button>
         </div>
       </div>

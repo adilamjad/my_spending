@@ -169,6 +169,7 @@
   let editingTxId = null;
   let editingBudgetId = null;
   let alertedThresholds = {};
+  let stagedImportTransactions = [];
 
   let settings = {
     currency: 'SAR',
@@ -984,6 +985,360 @@
     container.innerHTML = tableHtml;
   }
 
+  // ==========================================================================
+  // CSV IMPORT ENGINE (RFC 4180 Compliant Parser & Importer)
+  // ==========================================================================
+
+  function parseCSVText(text) {
+    if (!text) return [];
+    // Strip BOM if present
+    if (text.charCodeAt(0) === 0xFEFF) {
+      text = text.slice(1);
+    }
+
+    const rows = [];
+    let currentRow = [];
+    let currentVal = '';
+    let inQuotes = false;
+    let i = 0;
+    const len = text.length;
+
+    while (i < len) {
+      const char = text[i];
+      const nextChar = text[i + 1];
+
+      if (inQuotes) {
+        if (char === '"') {
+          if (nextChar === '"') {
+            // Escaped quote: "" -> "
+            currentVal += '"';
+            i += 2;
+            continue;
+          } else {
+            // Closing quote
+            inQuotes = false;
+            i++;
+            continue;
+          }
+        } else {
+          currentVal += char;
+          i++;
+          continue;
+        }
+      } else {
+        if (char === '"') {
+          inQuotes = true;
+          i++;
+          continue;
+        } else if (char === ',') {
+          currentRow.push(currentVal.trim());
+          currentVal = '';
+          i++;
+          continue;
+        } else if (char === '\r') {
+          if (nextChar === '\n') {
+            i++; // skip \r\n
+          }
+          currentRow.push(currentVal.trim());
+          rows.push(currentRow);
+          currentRow = [];
+          currentVal = '';
+          i++;
+          continue;
+        } else if (char === '\n') {
+          currentRow.push(currentVal.trim());
+          rows.push(currentRow);
+          currentRow = [];
+          currentVal = '';
+          i++;
+          continue;
+        } else {
+          currentVal += char;
+          i++;
+          continue;
+        }
+      }
+    }
+
+    // Push final field / row
+    if (currentVal.length > 0 || currentRow.length > 0) {
+      currentRow.push(currentVal.trim());
+      rows.push(currentRow);
+    }
+
+    // Filter out any purely empty rows
+    return rows.filter(row => row.some(cell => cell.length > 0));
+  }
+
+  function processImportCSV(file) {
+    if (!file) return;
+    const reader = new FileReader();
+
+    reader.onload = (e) => {
+      try {
+        const text = e.target.result;
+        const parsedRows = parseCSVText(text);
+
+        if (!parsedRows || parsedRows.length === 0) {
+          showToast('⚠️ CSV file is empty');
+          return;
+        }
+
+        // Identify header row
+        let headerIdx = -1;
+        let colMap = {
+          date: 0,
+          time: 1,
+          category: 2,
+          amount: 3,
+          currency: 4,
+          notes: 5,
+          id: 6
+        };
+
+        // Check first 3 rows for potential header keywords
+        for (let r = 0; r < Math.min(3, parsedRows.length); r++) {
+          const lowerRow = parsedRows[r].map(c => c.toLowerCase());
+          const hasDate = lowerRow.some(c => c.includes('date'));
+          const hasAmount = lowerRow.some(c => c.includes('amount') || c.includes('spend') || c.includes('total') || c.includes('cost'));
+          const hasCat = lowerRow.some(c => c.includes('cat'));
+
+          if (hasDate || hasAmount || hasCat) {
+            headerIdx = r;
+            // Map columns
+            lowerRow.forEach((cell, idx) => {
+              if (cell.includes('date')) colMap.date = idx;
+              else if (cell.includes('time')) colMap.time = idx;
+              else if (cell.includes('cat')) colMap.category = idx;
+              else if (cell.includes('amount') || cell.includes('spend') || cell.includes('cost') || cell.includes('total')) colMap.amount = idx;
+              else if (cell.includes('curr')) colMap.currency = idx;
+              else if (cell.includes('note') || cell.includes('desc') || cell.includes('memo')) colMap.notes = idx;
+              else if (cell.includes('id')) colMap.id = idx;
+            });
+            break;
+          }
+        }
+
+        const dataRows = headerIdx >= 0 ? parsedRows.slice(headerIdx + 1) : parsedRows;
+        const validEntries = [];
+        let totalImportAmount = 0;
+
+        dataRows.forEach((row, idx) => {
+          if (!row || row.length === 0) return;
+
+          // Parse Amount
+          let rawAmount = row[colMap.amount];
+          if (!rawAmount) return;
+          // Clean currency signs, spaces, and commas
+          rawAmount = String(rawAmount).replace(/[^0-9.-]/g, '');
+          const amount = Math.abs(parseFloat(rawAmount));
+          if (isNaN(amount) || amount <= 0) return;
+
+          // Parse Date
+          let rawDate = row[colMap.date] || '';
+          let dateYMD = formatDateYMD(new Date());
+
+          if (rawDate) {
+            // Normalize separators
+            const cleanDate = rawDate.trim().replace(/\//g, '-').replace(/\./g, '-');
+            const parts = cleanDate.split('-');
+            if (parts.length === 3) {
+              if (parts[0].length === 4) {
+                // YYYY-MM-DD
+                dateYMD = `${parts[0]}-${String(parts[1]).padStart(2, '0')}-${String(parts[2]).padStart(2, '0')}`;
+              } else if (parts[2].length === 4) {
+                // DD-MM-YYYY or MM-DD-YYYY
+                dateYMD = `${parts[2]}-${String(parts[1]).padStart(2, '0')}-${String(parts[0]).padStart(2, '0')}`;
+              }
+            }
+          }
+
+          // Parse Time
+          let rawTime = row[colMap.time] || '';
+          let timeHMS = formatTimeHMS(new Date());
+          if (rawTime && rawTime.includes(':')) {
+            const tParts = rawTime.trim().split(':');
+            const hh = String(parseInt(tParts[0], 10) || 0).padStart(2, '0');
+            const mm = String(parseInt(tParts[1], 10) || 0).padStart(2, '0');
+            const ss = tParts[2] ? String(parseInt(tParts[2], 10) || 0).padStart(2, '0') : '00';
+            timeHMS = `${hh}:${mm}:${ss}`;
+          }
+
+          // Parse Category
+          const rawCat = (row[colMap.category] || '').trim();
+          let matchedCat = CATEGORIES.find(c => c.name.toLowerCase() === rawCat.toLowerCase());
+
+          if (!matchedCat && rawCat) {
+            // Fuzzy check keywords
+            const low = rawCat.toLowerCase();
+            if (low.includes('grocer') || low.includes('food') || low.includes('supermarket')) matchedCat = CATEGORIES.find(c => c.id === 'groceries');
+            else if (low.includes('fuel') || low.includes('petrol') || low.includes('gas')) matchedCat = CATEGORIES.find(c => c.id === 'petrol');
+            else if (low.includes('rent') || low.includes('house')) matchedCat = CATEGORIES.find(c => c.id === 'rent');
+            else if (low.includes('bill') || low.includes('electric') || low.includes('water')) matchedCat = CATEGORIES.find(c => c.id === 'bills');
+            else if (low.includes('med') || low.includes('pharm') || low.includes('doctor')) matchedCat = CATEGORIES.find(c => c.id === 'medicine');
+            else if (low.includes('school') || low.includes('educat') || low.includes('tuition')) matchedCat = CATEGORIES.find(c => c.id === 'school');
+            else if (low.includes('car') || low.includes('auto')) matchedCat = CATEGORIES.find(c => c.id === 'car-installment');
+            else if (low.includes('pakistan')) matchedCat = CATEGORIES.find(c => c.id === 'pakistan');
+            else if (low.includes('jeddah')) matchedCat = CATEGORIES.find(c => c.id === 'jeddah-groceries');
+            else if (low.includes('kid') || low.includes('child') || low.includes('toy')) matchedCat = CATEGORIES.find(c => c.id === 'kids');
+            else if (low.includes('maria')) matchedCat = CATEGORIES.find(c => c.id === 'maria');
+            else if (low.includes('iqama') || low.includes('visa')) matchedCat = CATEGORIES.find(c => c.id === 'iqama');
+            else if (low.includes('service') || low.includes('repair') || low.includes('maint')) matchedCat = CATEGORIES.find(c => c.id === 'services');
+          }
+
+          if (!matchedCat) {
+            matchedCat = CATEGORIES[0]; // fallback
+          }
+
+          // Parse Notes & ID
+          const notes = (row[colMap.notes] || '').trim();
+          const existingId = (row[colMap.id] || '').trim();
+          const txId = existingId && existingId.length > 3 
+            ? existingId 
+            : 'tx_imp_' + Date.now() + '_' + idx + '_' + Math.random().toString(36).substr(2, 4);
+
+          const dtObj = new Date(`${dateYMD}T${timeHMS}`);
+          const timestamp = isNaN(dtObj.getTime()) ? Date.now() : dtObj.getTime();
+
+          validEntries.push({
+            id: txId,
+            amount: Math.round(amount * 100) / 100,
+            currency: (row[colMap.currency] || settings.currency).trim(),
+            categoryId: matchedCat.id,
+            categoryName: matchedCat.name,
+            notes: notes,
+            date: dateYMD,
+            time: timeHMS,
+            timestamp: timestamp
+          });
+
+          totalImportAmount += amount;
+        });
+
+        if (validEntries.length === 0) {
+          showToast('⚠️ No valid expenditure rows could be parsed from CSV');
+          return;
+        }
+
+        // Stage for confirmation
+        stagedImportTransactions = validEntries;
+        openImportPreviewModal(validEntries, totalImportAmount);
+
+      } catch (err) {
+        console.error('CSV Import Error', err);
+        showToast('⚠️ Could not parse CSV file');
+      }
+    };
+
+    reader.readAsText(file);
+  }
+
+  function openImportPreviewModal(entries, totalAmount) {
+    const modal = document.getElementById('import-csv-modal');
+    const totalBadge = document.getElementById('import-modal-total-badge');
+    const countBadge = document.getElementById('import-modal-count-badge');
+    const previewContainer = document.getElementById('import-csv-preview-container');
+    const desc = document.getElementById('import-modal-desc');
+
+    if (!modal) return;
+
+    if (totalBadge) totalBadge.textContent = `${settings.currency} ${formatNumber(totalAmount)}`;
+    if (countBadge) countBadge.textContent = `${entries.length} expenditures ready`;
+    if (desc) desc.textContent = `Found ${entries.length} expenditures totaling ${settings.currency} ${formatNumber(totalAmount)} in the uploaded CSV.`;
+
+    // Render preview table of up to first 5 rows
+    const previewRows = entries.slice(0, 5);
+    let html = `
+      <table class="csv-table">
+        <thead>
+          <tr>
+            <th>Date</th>
+            <th>Time</th>
+            <th>Category</th>
+            <th>Amount</th>
+            <th>Notes</th>
+          </tr>
+        </thead>
+        <tbody>
+    `;
+
+    previewRows.forEach(tx => {
+      html += `
+        <tr>
+          <td>${escapeHTML(tx.date)}</td>
+          <td>${escapeHTML(tx.time)}</td>
+          <td>${escapeHTML(tx.categoryName)}</td>
+          <td>${formatNumber(tx.amount)}</td>
+          <td>${escapeHTML(tx.notes || '-')}</td>
+        </tr>
+      `;
+    });
+
+    html += `</tbody></table>`;
+    if (entries.length > 5) {
+      html += `<div style="padding: 6px 10px; font-size: 0.72rem; color: var(--text-muted); text-align: center;">... and ${entries.length - 5} more rows</div>`;
+    }
+
+    if (previewContainer) previewContainer.innerHTML = html;
+    modal.classList.add('active');
+  }
+
+  function confirmCSVImport() {
+    if (!stagedImportTransactions || stagedImportTransactions.length === 0) return;
+
+    const replaceMode = document.getElementById('import-mode-replace')?.checked;
+    const count = stagedImportTransactions.length;
+
+    if (replaceMode) {
+      if (confirm(`Are you sure you want to REPLACE all current expenditures with the ${count} items from this CSV?`)) {
+        transactions = [...stagedImportTransactions];
+      } else {
+        return;
+      }
+    } else {
+      // Merge mode: skip duplicate IDs
+      const existingIds = new Set(transactions.map(t => t.id));
+      stagedImportTransactions.forEach(tx => {
+        if (!existingIds.has(tx.id)) {
+          transactions.push(tx);
+          existingIds.add(tx.id);
+        }
+      });
+    }
+
+    // Sort chronologically desc
+    transactions.sort((a, b) => b.timestamp - a.timestamp);
+    saveTransactions();
+
+    // Check budget thresholds for any categories impacted in the current month
+    const now = new Date();
+    const currentMonthPrefix = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    CATEGORIES.forEach(cat => {
+      const budget = Number(settings.budgets[cat.id]) || 0;
+      if (budget > 0) {
+        const catSpent = transactions
+          .filter(t => t.categoryId === cat.id && t.date && t.date.startsWith(currentMonthPrefix))
+          .reduce((sum, t) => sum + t.amount, 0);
+        checkBudgetThresholds(cat.id, 0, catSpent);
+      }
+    });
+
+    closeImportCSVModal();
+    triggerHaptic();
+    showToast(`✅ Successfully imported ${count} expenditures from CSV!`);
+
+    // Switch to History tab so user immediately sees their imported data
+    switchTab('tab-history');
+  }
+
+  function closeImportCSVModal() {
+    stagedImportTransactions = [];
+    const modal = document.getElementById('import-csv-modal');
+    if (modal) modal.classList.remove('active');
+    const fileInput = document.getElementById('import-csv-file-input');
+    if (fileInput) fileInput.value = '';
+  }
+
   // --- Delete & Undo ---
   function deleteTransaction(txId) {
     const idx = transactions.findIndex(t => t.id === txId);
@@ -1784,6 +2139,24 @@
     }
 
     document.getElementById('btn-clear-all')?.addEventListener('click', handleClearAllData);
+
+    // CSV Import Events
+    const importFileInput = document.getElementById('import-csv-file-input');
+    document.getElementById('btn-trigger-import-csv')?.addEventListener('click', () => {
+      importFileInput?.click();
+    });
+    if (importFileInput) {
+      importFileInput.addEventListener('change', (e) => {
+        if (e.target.files && e.target.files[0]) {
+          processImportCSV(e.target.files[0]);
+        }
+      });
+    }
+    document.getElementById('import-csv-confirm-btn')?.addEventListener('click', confirmCSVImport);
+    document.getElementById('import-csv-cancel-btn')?.addEventListener('click', closeImportCSVModal);
+    document.getElementById('import-csv-modal')?.addEventListener('click', (e) => {
+      if (e.target.id === 'import-csv-modal') closeImportCSVModal();
+    });
 
     // Budget Manager Events
     document.getElementById('btn-open-budget-manager')?.addEventListener('click', openBudgetManagerModal);
