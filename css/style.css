@@ -1249,3 +1249,469 @@ button:active {
   margin-left: 18px;
   margin-top: 6px;
 }
+
+/* ==========================================================================
+   CATEGORY BUDGETS & UNIFIED DUAL BARS (SPENT & REMAINING)
+   ========================================================================== */
+
+/* Overall Budget Card */
+.overall-budget-card {
+  background: var(--grad-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-xl);
+  padding: 18px;
+  margin-bottom: 20px;
+  box-shadow: var(--shadow-md);
+  position: relative;
+  overflow: hidden;
+}
+
+.overall-budget-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.budget-pill-btn {
+  background: rgba(59, 130, 246, 0.15);
+  border: 1px solid var(--primary);
+  color: var(--primary);
+  font-size: 0.76rem;
+  font-weight: 700;
+  padding: 6px 12px;
+  border-radius: var(--radius-full);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.budget-pill-btn:hover {
+  background: var(--primary);
+  color: #ffffff;
+}
+
+.overall-budget-stats {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.stat-item {
+  display: flex;
+  flex-direction: column;
+}
+
+.stat-label {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
+.stat-val {
+  font-size: 1.05rem;
+  font-weight: 800;
+  color: var(--text-primary);
+  letter-spacing: -0.02em;
+}
+
+.stat-val.positive {
+  color: var(--accent-green);
+}
+
+.stat-val.negative {
+  color: var(--accent-red);
+}
+
+/* Active Alerts Banner */
+.budget-alerts-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 20px;
+}
+
+.budget-alert-card {
+  background: rgba(30, 27, 75, 0.6);
+  border: 1px solid rgba(239, 68, 68, 0.4);
+  border-radius: var(--radius-lg);
+  padding: 12px 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  animation: pulseGlow 2s infinite ease-in-out;
+}
+
+.budget-alert-card.warning-50 {
+  background: rgba(14, 165, 233, 0.12);
+  border-color: rgba(14, 165, 233, 0.4);
+}
+
+.budget-alert-card.warning-75 {
+  background: rgba(245, 158, 11, 0.14);
+  border-color: rgba(245, 158, 11, 0.45);
+}
+
+.budget-alert-card.warning-90 {
+  background: rgba(234, 88, 12, 0.16);
+  border-color: rgba(234, 88, 12, 0.5);
+}
+
+.budget-alert-card.warning-100 {
+  background: rgba(239, 68, 68, 0.18);
+  border-color: rgba(239, 68, 68, 0.6);
+}
+
+@keyframes pulseGlow {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.006); }
+}
+
+.alert-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.alert-icon {
+  font-size: 1.2rem;
+  flex-shrink: 0;
+}
+
+.alert-texts {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.alert-title {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.alert-desc {
+  font-size: 0.74rem;
+  color: var(--text-secondary);
+}
+
+/* Category Budget Card Item */
+.category-budget-item {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-xl);
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  transition: all var(--transition-fast);
+}
+
+.category-budget-item:hover {
+  background: var(--bg-card-hover);
+  border-color: rgba(255, 255, 255, 0.15);
+}
+
+.cat-budget-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.cat-budget-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.cat-budget-name {
+  font-size: 0.94rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.threshold-badge {
+  font-size: 0.68rem;
+  font-weight: 800;
+  padding: 2px 7px;
+  border-radius: var(--radius-full);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.threshold-badge.level-50 {
+  background: rgba(14, 165, 233, 0.2);
+  color: #38bdf8;
+  border: 1px solid rgba(14, 165, 233, 0.4);
+}
+
+.threshold-badge.level-75 {
+  background: rgba(245, 158, 11, 0.2);
+  color: #fbbf24;
+  border: 1px solid rgba(245, 158, 11, 0.4);
+}
+
+.threshold-badge.level-90 {
+  background: rgba(234, 88, 12, 0.2);
+  color: #fb923c;
+  border: 1px solid rgba(234, 88, 12, 0.5);
+}
+
+.threshold-badge.level-100 {
+  background: rgba(239, 68, 68, 0.25);
+  color: #f87171;
+  border: 1px solid rgba(239, 68, 68, 0.6);
+  animation: urgentPulse 1.5s infinite;
+}
+
+@keyframes urgentPulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.65; }
+}
+
+.cat-budget-amounts {
+  text-align: right;
+  flex-shrink: 0;
+}
+
+.cat-budget-spent {
+  font-size: 0.95rem;
+  font-weight: 800;
+  color: var(--text-primary);
+}
+
+.cat-budget-total {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+}
+
+/* ==========================================================================
+   THE UNIFIED DUAL BAR: SPENDING AND REMAINING IN THE SAME BAR
+   ========================================================================== */
+.unified-bar-wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+}
+
+.unified-bar-track {
+  width: 100%;
+  height: 24px;
+  border-radius: var(--radius-md);
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--border-color);
+  display: flex;
+  overflow: hidden;
+  position: relative;
+}
+
+/* Spent Segment */
+.bar-segment-spent {
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  padding-left: 8px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: #ffffff;
+  white-space: nowrap;
+  transition: width 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+  overflow: hidden;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
+}
+
+/* Remaining Segment */
+.bar-segment-remaining {
+  height: 100%;
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding-right: 8px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  background: repeating-linear-gradient(
+    45deg,
+    rgba(255, 255, 255, 0.03),
+    rgba(255, 255, 255, 0.03) 6px,
+    rgba(255, 255, 255, 0.06) 6px,
+    rgba(255, 255, 255, 0.06) 12px
+  );
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+/* Over Budget Bar State */
+.unified-bar-track.over-budget .bar-segment-spent {
+  background: linear-gradient(135deg, #ef4444 0%, #b91c1c 100%) !important;
+  width: 100% !important;
+}
+
+.unified-bar-track.over-budget .bar-segment-remaining {
+  display: none;
+}
+
+/* Threshold Colors for Spent Segment */
+.color-normal {
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+}
+
+.color-50 {
+  background: linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%);
+}
+
+.color-75 {
+  background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+}
+
+.color-90 {
+  background: linear-gradient(135deg, #ea580c 0%, #c2410c 100%);
+}
+
+.color-100 {
+  background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+}
+
+/* Bar Footer Details */
+.unified-bar-labels {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.74rem;
+  color: var(--text-secondary);
+}
+
+.label-remaining-highlight {
+  font-weight: 700;
+  color: var(--accent-green);
+}
+
+.label-over-highlight {
+  font-weight: 700;
+  color: var(--accent-red);
+}
+
+.btn-quick-edit-budget {
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  color: var(--text-muted);
+  font-size: 0.72rem;
+  font-weight: 600;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.btn-quick-edit-budget:hover {
+  color: var(--text-primary);
+  border-color: var(--primary);
+}
+
+/* ==========================================================================
+   BUDGET MANAGER MODAL
+   ========================================================================== */
+.budget-manager-list {
+  max-height: 52vh;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-right: 4px;
+  margin-bottom: 16px;
+  -webkit-overflow-scrolling: touch;
+}
+
+.budget-input-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  padding: 10px 12px;
+}
+
+.budget-input-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.88rem;
+  font-weight: 600;
+  min-width: 140px;
+}
+
+.budget-number-input {
+  width: 120px;
+  text-align: right;
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  padding: 6px 8px;
+}
+
+.budget-number-input:focus {
+  border-color: var(--primary);
+}
+
+/* Alert Notification Pop-up Modal */
+.alert-popup-card {
+  text-align: center;
+  padding: 10px 0;
+}
+
+.alert-popup-icon-badge {
+  width: 60px;
+  height: 60px;
+  border-radius: var(--radius-full);
+  margin: 0 auto 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.8rem;
+}
+
+.alert-popup-icon-badge.badge-50 {
+  background: rgba(14, 165, 233, 0.2);
+  color: #38bdf8;
+}
+
+.alert-popup-icon-badge.badge-75 {
+  background: rgba(245, 158, 11, 0.2);
+  color: #fbbf24;
+}
+
+.alert-popup-icon-badge.badge-90 {
+  background: rgba(234, 88, 12, 0.2);
+  color: #fb923c;
+}
+
+.alert-popup-icon-badge.badge-100 {
+  background: rgba(239, 68, 68, 0.25);
+  color: #f87171;
+}
+

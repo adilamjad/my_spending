@@ -180,13 +180,62 @@
            ========================================== -->
       <section id="tab-analytics" class="tab-content" aria-label="Analytics & Breakdown">
         
-        <!-- Summary Cards -->
-        <div class="summary-cards-grid">
-          <div class="summary-card highlight">
-            <span class="summary-title">Total Spending This Month</span>
-            <span class="summary-value large" id="analytics-total-spend">SAR 0.00</span>
+        <!-- Overall Monthly Budget Card -->
+        <div class="overall-budget-card" id="overall-budget-card">
+          <div class="overall-budget-header">
+            <div>
+              <span class="stat-label">Monthly Budget Status</span>
+              <h2 style="font-size: 1.15rem; font-weight: 800; color: var(--text-primary); margin-top: 2px;" id="overall-budget-title">
+                October 2026 Budget
+              </h2>
+            </div>
+            <button type="button" class="budget-pill-btn" id="btn-open-budget-manager">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" width="14" height="14">
+                <circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+              </svg>
+              Set Budgets
+            </button>
           </div>
 
+          <div class="overall-budget-stats">
+            <div class="stat-item">
+              <span class="stat-label">Total Budget</span>
+              <span class="stat-val" id="overall-total-budget">SAR 0.00</span>
+            </div>
+            <div class="stat-item">
+              <span class="stat-label">Total Spent</span>
+              <span class="stat-val" id="overall-total-spent">SAR 0.00</span>
+            </div>
+            <div class="stat-item">
+              <span class="stat-label">Remaining</span>
+              <span class="stat-val positive" id="overall-total-remaining">SAR 0.00</span>
+            </div>
+          </div>
+
+          <!-- Overall Dual Bar (Spent & Remaining in Same Bar) -->
+          <div class="unified-bar-wrapper">
+            <div class="unified-bar-track" id="overall-unified-bar">
+              <div class="bar-segment-spent color-normal" id="overall-spent-segment" style="width: 0%;">
+                <span id="overall-spent-label">0%</span>
+              </div>
+              <div class="bar-segment-remaining" id="overall-remaining-segment" style="width: 100%;">
+                <span id="overall-remaining-label">Remaining</span>
+              </div>
+            </div>
+            <div class="unified-bar-labels">
+              <span id="overall-pct-spent-text">0% of total budget spent</span>
+              <span id="overall-remaining-text" class="label-remaining-highlight">SAR 0.00 left</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Active Alerts Banner (when 50%, 75%, 90%, 100% is reached) -->
+        <div id="budget-alerts-section" class="budget-alerts-section" style="display: none;">
+          <!-- Dynamically populated with active threshold alerts -->
+        </div>
+
+        <!-- Key Metrics Grid -->
+        <div class="summary-cards-grid">
           <div class="summary-card">
             <span class="summary-title">Transactions</span>
             <span class="summary-value" id="analytics-tx-count">0</span>
@@ -198,15 +247,23 @@
           </div>
         </div>
 
-        <!-- Category Breakdown Card -->
+        <!-- Category Budgets & Spending (Same Bars for Spending & Remaining) -->
         <div class="breakdown-card">
           <div class="section-header">
-            <h2 class="section-title">Spending by Category</h2>
-            <span class="section-hint">Ranked by Highest Spend</span>
+            <div>
+              <h2 class="section-title">Category Budgets &amp; Spending</h2>
+              <span class="section-hint">Dual bars show Spent &amp; Remaining in set budgets</span>
+            </div>
+            <button type="button" class="btn-quick-edit-budget" id="btn-quick-set-budgets" title="Set or adjust budgets for each category">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13">
+                <path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/>
+              </svg>
+              Edit All
+            </button>
           </div>
           
           <div class="breakdown-list" id="analytics-breakdown-list">
-            <!-- Generated via JS -->
+            <!-- Dynamically populated with 13 category dual bars -->
           </div>
         </div>
 
@@ -290,6 +347,26 @@
 
           <div class="setting-row">
             <div class="setting-info">
+              <span class="setting-label">Category Budgets</span>
+              <span class="setting-sub">Set monthly targets for all 13 categories</span>
+            </div>
+            <button type="button" class="btn-secondary" id="btn-settings-open-budgets" style="padding: 6px 12px; font-size: 0.82rem;">
+              Set Budgets
+            </button>
+          </div>
+
+          <div class="setting-row">
+            <div class="setting-info">
+              <span class="setting-label">Budget Alerts (50%, 75%, 90%, 100%)</span>
+              <span class="setting-sub" id="push-notification-status-text">In-app audio &amp; toasts active</span>
+            </div>
+            <button type="button" class="btn-secondary" id="btn-enable-push-notifications" style="padding: 6px 12px; font-size: 0.82rem;">
+              Enable Push
+            </button>
+          </div>
+
+          <div class="setting-row">
+            <div class="setting-info">
               <span class="setting-label">Install on Phone</span>
               <span class="setting-sub">Add directly to iPhone or Android Home Screen</span>
             </div>
@@ -337,7 +414,7 @@
 
     <!-- Bottom Navigation Bar (iOS / Mobile Tab Bar) -->
     <nav class="bottom-nav" aria-label="Bottom Navigation">
-      <button type="button" class="nav-tab-btn active" data-tab="tab-add" aria-label="Add Expense">
+      <button type="button" class="nav-tab-btn active" id="nav-btn-add" data-tab="tab-add" aria-label="Add Expense">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <circle cx="12" cy="12" r="10"/>
           <line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/>
@@ -345,7 +422,7 @@
         <span>Add</span>
       </button>
 
-      <button type="button" class="nav-tab-btn" data-tab="tab-history" aria-label="Expenditure History">
+      <button type="button" class="nav-tab-btn" id="nav-btn-history" data-tab="tab-history" aria-label="Expenditure History">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
           <polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/>
@@ -353,14 +430,14 @@
         <span>History</span>
       </button>
 
-      <button type="button" class="nav-tab-btn" data-tab="tab-analytics" aria-label="Analytics">
+      <button type="button" class="nav-tab-btn" id="nav-btn-analytics" data-tab="tab-analytics" aria-label="Analytics">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/>
         </svg>
         <span>Analytics</span>
       </button>
 
-      <button type="button" class="nav-tab-btn" data-tab="tab-export" aria-label="CSV Export & Settings">
+      <button type="button" class="nav-tab-btn" id="nav-btn-export" data-tab="tab-export" aria-label="CSV Export & Settings">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
         </svg>
@@ -447,6 +524,88 @@
         <button type="button" class="submit-btn" id="install-modal-close" style="padding: 12px;">
           Got It
         </button>
+      </div>
+    </div>
+
+    <!-- All Category Budgets Manager Modal Sheet -->
+    <div id="budget-manager-modal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="modal-budget-title">
+      <div class="modal-sheet" style="max-height: 88vh; display: flex; flex-direction: column;">
+        <div class="modal-handle"></div>
+        <div style="display: flex; justify-content: space-between; align-items: baseline;">
+          <h3 id="modal-budget-title" class="modal-title">Set Monthly Budgets</h3>
+          <span style="font-size: 0.82rem; font-weight: 700; color: var(--primary);" id="budget-modal-total-sum">Total: SAR 0.00</span>
+        </div>
+        <p class="modal-desc" style="margin-bottom: 12px;">
+          Set budget for each category. You will receive alerts at <b>50%</b>, <b>75%</b>, <b>90%</b>, and <b>100%</b>.
+        </p>
+
+        <div class="budget-manager-list" id="budget-manager-list">
+          <!-- Populated dynamically with all 13 categories -->
+        </div>
+
+        <div class="modal-actions" style="margin-top: auto; padding-top: 8px;">
+          <button type="button" class="btn-secondary" id="budget-modal-cancel-btn">Cancel</button>
+          <button type="button" class="submit-btn" id="budget-modal-save-btn" style="padding: 12px;">Save Budgets</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Single Category Quick Budget Modal -->
+    <div id="quick-budget-modal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="modal-quick-budget-title">
+      <div class="modal-sheet">
+        <div class="modal-handle"></div>
+        <h3 id="modal-quick-budget-title" class="modal-title">Set Category Budget</h3>
+        <p class="modal-desc" id="quick-budget-desc">Set monthly budget limit for this category.</p>
+
+        <div class="form-group" style="margin-bottom: 16px;">
+          <label for="quick-budget-amount-input" class="form-label">Monthly Budget</label>
+          <div class="input-field-wrapper">
+            <span class="currency-symbol" style="margin-right: 6px;">SAR</span>
+            <input type="number" id="quick-budget-amount-input" class="text-input" placeholder="0.00" step="any" min="0" required>
+          </div>
+          <div style="font-size: 0.76rem; color: var(--text-muted); margin-top: 4px;" id="quick-budget-current-spend">
+            Spent this month: SAR 0.00
+          </div>
+        </div>
+
+        <div class="modal-actions">
+          <button type="button" class="btn-secondary" id="quick-budget-cancel-btn">Cancel</button>
+          <button type="button" class="submit-btn" id="quick-budget-save-btn" style="padding: 12px;">Update Budget</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Budget Threshold Alert Notification Pop-up Modal -->
+    <div id="budget-alert-modal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="modal-alert-title">
+      <div class="modal-sheet">
+        <div class="modal-handle"></div>
+        <div class="alert-popup-card">
+          <div class="alert-popup-icon-badge" id="alert-popup-badge">⚠️</div>
+          <h3 id="modal-alert-title" class="modal-title" style="margin-bottom: 6px;">Budget Threshold Reached</h3>
+          <p class="modal-desc" id="alert-popup-message" style="margin-bottom: 16px; font-size: 0.95rem; line-height: 1.4;">
+            <!-- Alert message inserted here -->
+          </p>
+
+          <!-- Dual Bar Preview -->
+          <div class="unified-bar-wrapper" style="margin-bottom: 20px;">
+            <div class="unified-bar-track" id="alert-popup-bar">
+              <div class="bar-segment-spent" id="alert-popup-bar-spent" style="width: 50%;">
+                <span id="alert-popup-bar-spent-txt">50%</span>
+              </div>
+              <div class="bar-segment-remaining" id="alert-popup-bar-rem" style="width: 50%;">
+                <span id="alert-popup-bar-rem-txt">Remaining</span>
+              </div>
+            </div>
+            <div class="unified-bar-labels">
+              <span id="alert-popup-spent-txt">Spent: SAR 0.00</span>
+              <span id="alert-popup-rem-txt" class="label-remaining-highlight">Remaining: SAR 0.00</span>
+            </div>
+          </div>
+
+          <button type="button" class="submit-btn" id="budget-alert-modal-close" style="padding: 14px; width: 100%;">
+            Acknowledge Alert
+          </button>
+        </div>
       </div>
     </div>
 

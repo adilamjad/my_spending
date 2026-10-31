@@ -9,6 +9,24 @@
   // --- Constants & Config ---
   const STORAGE_KEY = 'my_spending_transactions_v1';
   const SETTINGS_KEY = 'my_spending_settings_v1';
+  const ALERTS_KEY = 'my_spending_alerted_thresholds_v1';
+
+  // Default Monthly Budgets for the 13 Categories (can be edited by user anytime)
+  const DEFAULT_BUDGETS = {
+    'rent': 3500,
+    'bills': 600,
+    'groceries': 2000,
+    'school': 3000,
+    'petrol': 500,
+    'services': 300,
+    'medicine': 250,
+    'pakistan': 1500,
+    'car-installment': 1200,
+    'jeddah-groceries': 800,
+    'kids': 500,
+    'maria': 1000,
+    'iqama': 800
+  };
 
   // The 13 Specific Categories requested by User
   const CATEGORIES = [
@@ -149,17 +167,22 @@
   let historyCategoryFilter = 'all';
   let lastDeletedTx = null;
   let editingTxId = null;
+  let editingBudgetId = null;
+  let alertedThresholds = {};
 
   let settings = {
     currency: 'SAR',
     currencySymbol: 'SAR',
-    theme: 'dark'
+    theme: 'dark',
+    budgets: Object.assign({}, DEFAULT_BUDGETS),
+    pushNotifications: false
   };
 
   // --- Initializer ---
   function init() {
     loadSettings();
     loadTransactions();
+    loadAlertedThresholds();
     applyTheme(settings.theme);
     setupEventListeners();
     renderCategoriesGrid();
@@ -169,6 +192,7 @@
     updateAnalytics();
     updateCSVPreview();
     updateMonthSummaryBadge();
+    updateNotificationStatusUI();
     registerServiceWorker();
   }
 
@@ -177,7 +201,10 @@
     try {
       const saved = localStorage.getItem(SETTINGS_KEY);
       if (saved) {
-        settings = Object.assign(settings, JSON.parse(saved));
+        const parsed = JSON.parse(saved);
+        settings = Object.assign(settings, parsed);
+        // Ensure all 13 categories have at least default budgets
+        settings.budgets = Object.assign({}, DEFAULT_BUDGETS, settings.budgets || {});
       }
     } catch (e) {
       console.error('Error loading settings', e);
@@ -192,6 +219,23 @@
       console.error('Error saving settings', e);
     }
     updateCurrencyDisplay();
+  }
+
+  function loadAlertedThresholds() {
+    try {
+      const saved = localStorage.getItem(ALERTS_KEY);
+      if (saved) {
+        alertedThresholds = JSON.parse(saved);
+      }
+    } catch (e) {
+      alertedThresholds = {};
+    }
+  }
+
+  function saveAlertedThresholds() {
+    try {
+      localStorage.setItem(ALERTS_KEY, JSON.stringify(alertedThresholds));
+    } catch (e) {}
   }
 
   function loadTransactions() {
@@ -355,6 +399,13 @@
     const categoryObj = CATEGORIES.find(c => c.id === selectedCategory) || CATEGORIES[0];
     const timestampObj = getActiveTimestamp();
 
+    // Calculate current category spend before adding this transaction
+    const now = new Date();
+    const currentMonthPrefix = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    const oldSpent = transactions
+      .filter(t => t.categoryId === categoryObj.id && t.date && t.date.startsWith(currentMonthPrefix))
+      .reduce((sum, t) => sum + t.amount, 0);
+
     const newTransaction = {
       id: 'tx_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
       amount: Math.round(amount * 100) / 100,
@@ -370,6 +421,12 @@
     // Prepend to list (newest first)
     transactions.unshift(newTransaction);
     saveTransactions();
+
+    // Check if new transaction falls in this month to check threshold
+    if (newTransaction.date && newTransaction.date.startsWith(currentMonthPrefix)) {
+      const newSpent = oldSpent + newTransaction.amount;
+      checkBudgetThresholds(categoryObj.id, oldSpent, newSpent);
+    }
 
     // Reset Form
     amountInput.value = '';
@@ -501,71 +558,268 @@
     container.innerHTML = html;
   }
 
-  // --- Analytics & Insights ---
+  // --- Analytics & Insights with Budget Dual-Bars (Spent & Remaining) ---
   function updateAnalytics() {
-    const totalSpendEl = document.getElementById('analytics-total-spend');
     const txCountEl = document.getElementById('analytics-tx-count');
     const dailyAvgEl = document.getElementById('analytics-daily-avg');
     const breakdownList = document.getElementById('analytics-breakdown-list');
-
-    if (!totalSpendEl) return;
+    const alertsContainer = document.getElementById('budget-alerts-section');
 
     const now = new Date();
     const currentMonthPrefix = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    const monthName = now.toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
 
-    // Filter to this month
+    // Update month title on overall budget card
+    const overallTitle = document.getElementById('overall-budget-title');
+    if (overallTitle) overallTitle.textContent = `${monthName} Budget`;
+
+    // Filter transactions to this month
     const thisMonthTxs = transactions.filter(t => t.date && t.date.startsWith(currentMonthPrefix));
     const totalSpend = thisMonthTxs.reduce((sum, t) => sum + t.amount, 0);
 
-    totalSpendEl.textContent = `${settings.currency} ${formatNumber(totalSpend)}`;
-    txCountEl.textContent = thisMonthTxs.length.toString();
-
-    // Daily Average (days passed so far this month)
+    // Key metrics
+    if (txCountEl) txCountEl.textContent = thisMonthTxs.length.toString();
     const dayOfMonth = Math.max(1, now.getDate());
     const dailyAvg = totalSpend / dayOfMonth;
-    dailyAvgEl.textContent = `${settings.currency} ${formatNumber(dailyAvg)}`;
+    if (dailyAvgEl) dailyAvgEl.textContent = `${settings.currency} ${formatNumber(dailyAvg)}`;
 
-    // Category breakdown
-    const catTotals = {};
-    CATEGORIES.forEach(c => catTotals[c.id] = { cat: c, total: 0, count: 0 });
+    // Calculate totals for all 13 categories
+    const catData = {};
+    let totalMonthlyBudget = 0;
+
+    CATEGORIES.forEach(c => {
+      const budget = Number(settings.budgets[c.id]) || 0;
+      totalMonthlyBudget += budget;
+      catData[c.id] = {
+        cat: c,
+        spent: 0,
+        budget: budget,
+        count: 0
+      };
+    });
 
     thisMonthTxs.forEach(tx => {
-      if (catTotals[tx.categoryId]) {
-        catTotals[tx.categoryId].total += tx.amount;
-        catTotals[tx.categoryId].count += 1;
+      if (catData[tx.categoryId]) {
+        catData[tx.categoryId].spent += tx.amount;
+        catData[tx.categoryId].count += 1;
       }
     });
 
-    const sortedCats = Object.values(catTotals)
-      .filter(item => item.total > 0)
-      .sort((a, b) => b.total - a.total);
+    // --- 1. Overall Monthly Budget Card ---
+    const totalRemaining = totalMonthlyBudget - totalSpend;
+    const overallTotalBudgetEl = document.getElementById('overall-total-budget');
+    const overallTotalSpentEl = document.getElementById('overall-total-spent');
+    const overallTotalRemainingEl = document.getElementById('overall-total-remaining');
+    const overallSpentSeg = document.getElementById('overall-spent-segment');
+    const overallRemSeg = document.getElementById('overall-remaining-segment');
+    const overallSpentLabel = document.getElementById('overall-spent-label');
+    const overallRemLabel = document.getElementById('overall-remaining-label');
+    const overallPctText = document.getElementById('overall-pct-spent-text');
+    const overallRemText = document.getElementById('overall-remaining-text');
+    const overallUnifiedBar = document.getElementById('overall-unified-bar');
 
-    if (sortedCats.length === 0) {
-      breakdownList.innerHTML = `<div class="empty-desc" style="text-align:center; padding: 16px;">No expenditures recorded for this month yet.</div>`;
-      return;
+    if (overallTotalBudgetEl) overallTotalBudgetEl.textContent = `${settings.currency} ${formatNumber(totalMonthlyBudget)}`;
+    if (overallTotalSpentEl) overallTotalSpentEl.textContent = `${settings.currency} ${formatNumber(totalSpend)}`;
+    
+    if (overallTotalRemainingEl) {
+      if (totalRemaining >= 0) {
+        overallTotalRemainingEl.textContent = `${settings.currency} ${formatNumber(totalRemaining)}`;
+        overallTotalRemainingEl.className = 'stat-val positive';
+      } else {
+        overallTotalRemainingEl.textContent = `-${settings.currency} ${formatNumber(Math.abs(totalRemaining))}`;
+        overallTotalRemainingEl.className = 'stat-val negative';
+      }
     }
 
-    breakdownList.innerHTML = sortedCats.map(item => {
-      const pct = totalSpend > 0 ? ((item.total / totalSpend) * 100).toFixed(1) : 0;
-      return `
-        <div class="breakdown-item">
-          <div class="breakdown-info">
-            <span class="breakdown-cat-name">
-              <span class="cat-dot" style="background: ${item.cat.color};"></span>
-              ${escapeHTML(item.cat.name)}
-              <span style="font-size:0.75rem; color: var(--text-muted); font-weight: normal;">(${item.count})</span>
-            </span>
-            <span class="breakdown-cat-amount">
-              ${settings.currency} ${formatNumber(item.total)}
-              <span style="font-size: 0.78rem; color: var(--text-muted); font-weight: 500;">(${pct}%)</span>
-            </span>
+    if (overallUnifiedBar) {
+      const overallPct = totalMonthlyBudget > 0 ? (totalSpend / totalMonthlyBudget) * 100 : 0;
+      const isOverallOver = totalSpend > totalMonthlyBudget && totalMonthlyBudget > 0;
+
+      if (isOverallOver) {
+        overallUnifiedBar.classList.add('over-budget');
+        overallSpentSeg.style.width = '100%';
+        overallSpentLabel.textContent = `${overallPct.toFixed(1)}% (Over)`;
+        if (overallRemSeg) overallRemSeg.style.display = 'none';
+        if (overallPctText) overallPctText.textContent = `${overallPct.toFixed(1)}% of total budget spent`;
+        if (overallRemText) {
+          overallRemText.textContent = `Over by ${settings.currency} ${formatNumber(Math.abs(totalRemaining))}`;
+          overallRemText.className = 'label-over-highlight';
+        }
+      } else {
+        overallUnifiedBar.classList.remove('over-budget');
+        const spentWidth = Math.min(100, Math.max(0, overallPct));
+        const remWidth = Math.max(0, 100 - spentWidth);
+
+        overallSpentSeg.style.width = `${spentWidth}%`;
+        overallSpentLabel.textContent = `${spentWidth.toFixed(0)}%`;
+
+        if (overallRemSeg) {
+          overallRemSeg.style.display = 'flex';
+          overallRemSeg.style.width = `${remWidth}%`;
+          overallRemLabel.textContent = `${settings.currency} ${formatNumber(totalRemaining)} left`;
+        }
+
+        if (overallPctText) overallPctText.textContent = `${overallPct.toFixed(1)}% of total budget spent`;
+        if (overallRemText) {
+          overallRemText.textContent = `${settings.currency} ${formatNumber(totalRemaining)} remaining`;
+          overallRemText.className = 'label-remaining-highlight';
+        }
+
+        // Color coding for overall spent
+        overallSpentSeg.className = 'bar-segment-spent ' + getThresholdColorClass(overallPct);
+      }
+    }
+
+    // --- 2. Active Alerts Banner (50%, 75%, 90%, 100% reached) ---
+    const activeAlerts = [];
+    Object.values(catData).forEach(item => {
+      if (item.budget > 0) {
+        const pct = (item.spent / item.budget) * 100;
+        if (pct >= 100) {
+          activeAlerts.push({ ...item, pct, level: 100, severity: 4, msg: `Exceeded budget limit! (${pct.toFixed(0)}%)` });
+        } else if (pct >= 90) {
+          activeAlerts.push({ ...item, pct, level: 90, severity: 3, msg: `Critical: 90% reached! Only ${settings.currency} ${formatNumber(item.budget - item.spent)} left.` });
+        } else if (pct >= 75) {
+          activeAlerts.push({ ...item, pct, level: 75, severity: 2, msg: `Warning: 75% of budget used (${pct.toFixed(0)}%).` });
+        } else if (pct >= 50) {
+          activeAlerts.push({ ...item, pct, level: 50, severity: 1, msg: `Notice: 50% milestone reached.` });
+        }
+      }
+    });
+
+    if (alertsContainer) {
+      if (activeAlerts.length > 0) {
+        // Sort highest severity first
+        activeAlerts.sort((a, b) => b.severity - a.severity);
+        alertsContainer.style.display = 'flex';
+        alertsContainer.innerHTML = `
+          <div style="font-size: 0.8rem; font-weight: 700; color: var(--text-primary); margin-bottom: 2px; display: flex; align-items: center; gap: 6px;">
+            <span>⚠️ Active Budget Alerts (${activeAlerts.length})</span>
           </div>
-          <div class="breakdown-bar-bg">
-            <div class="breakdown-bar-fill" style="width: ${pct}%; background: ${item.cat.color};"></div>
+          ${activeAlerts.map(a => `
+            <div class="budget-alert-card warning-${a.level}" data-cat="${a.cat.id}">
+              <div class="alert-left">
+                <span class="alert-icon">${a.level >= 100 ? '🛑' : a.level >= 90 ? '🚨' : a.level >= 75 ? '⚠️' : 'ℹ️'}</span>
+                <div class="alert-texts">
+                  <span class="alert-title">${escapeHTML(a.cat.name)}: ${a.pct.toFixed(0)}% reached</span>
+                  <span class="alert-desc">${a.msg}</span>
+                </div>
+              </div>
+              <button type="button" class="btn-quick-edit-budget" data-cat="${a.cat.id}">Adjust</button>
+            </div>
+          `).join('')}
+        `;
+      } else {
+        alertsContainer.style.display = 'none';
+        alertsContainer.innerHTML = '';
+      }
+    }
+
+    // --- 3. Category Budgets & Spending List (Dual Bars) ---
+    if (!breakdownList) return;
+
+    // Sort categories: highest percentage first, or highest spent
+    const allCategoryItems = Object.values(catData).sort((a, b) => {
+      const pctA = a.budget > 0 ? a.spent / a.budget : (a.spent > 0 ? 0.01 : 0);
+      const pctB = b.budget > 0 ? b.spent / b.budget : (b.spent > 0 ? 0.01 : 0);
+      if (pctB !== pctA) return pctB - pctA;
+      return b.spent - a.spent;
+    });
+
+    breakdownList.innerHTML = allCategoryItems.map(item => {
+      const budget = item.budget;
+      const spent = item.spent;
+      const remaining = budget - spent;
+      const hasBudget = budget > 0;
+      const pct = hasBudget ? (spent / budget) * 100 : 0;
+      const isOver = hasBudget && spent > budget;
+
+      // Threshold Badge & Color
+      let badgeHtml = '';
+      let colorClass = 'color-normal';
+
+      if (!hasBudget) {
+        badgeHtml = `<span style="font-size:0.68rem; color: var(--text-muted); font-weight: 600;">NO BUDGET</span>`;
+      } else if (isOver) {
+        badgeHtml = `<span class="threshold-badge level-100">100% EXCEEDED</span>`;
+        colorClass = 'color-100';
+      } else if (pct >= 90) {
+        badgeHtml = `<span class="threshold-badge level-90">90% CRITICAL</span>`;
+        colorClass = 'color-90';
+      } else if (pct >= 75) {
+        badgeHtml = `<span class="threshold-badge level-75">75% WARNING</span>`;
+        colorClass = 'color-75';
+      } else if (pct >= 50) {
+        badgeHtml = `<span class="threshold-badge level-50">50% REACHED</span>`;
+        colorClass = 'color-50';
+      } else {
+        badgeHtml = `<span class="threshold-badge" style="background: rgba(16, 185, 129, 0.15); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.3);">${pct.toFixed(0)}% USED</span>`;
+        colorClass = 'color-normal';
+      }
+
+      // Bar Widths
+      const spentWidth = hasBudget ? Math.min(100, Math.max(0, pct)) : (spent > 0 ? 100 : 0);
+      const remWidth = hasBudget && !isOver ? Math.max(0, 100 - spentWidth) : 0;
+
+      return `
+        <div class="category-budget-item" data-cat="${item.cat.id}">
+          <div class="cat-budget-header">
+            <div class="cat-budget-left">
+              <div class="cat-dot" style="background: ${item.cat.color};"></div>
+              <span class="cat-budget-name">
+                ${escapeHTML(item.cat.name)}
+                ${badgeHtml}
+              </span>
+            </div>
+            <div class="cat-budget-amounts">
+              <span class="cat-budget-spent">${settings.currency} ${formatNumber(spent)}</span>
+              <span class="cat-budget-total"> / ${hasBudget ? `${settings.currency} ${formatNumber(budget)}` : 'No budget'}</span>
+            </div>
+          </div>
+
+          <!-- The Same Bar showing Spending & Remaining -->
+          <div class="unified-bar-wrapper">
+            <div class="unified-bar-track ${isOver ? 'over-budget' : ''}">
+              <div class="bar-segment-spent ${colorClass}" style="width: ${spentWidth}%;">
+                <span>${spent > 0 ? `${formatNumber(spent)} (${pct.toFixed(0)}%)` : ''}</span>
+              </div>
+              ${(hasBudget && !isOver && remaining > 0) ? `
+                <div class="bar-segment-remaining" style="width: ${remWidth}%;">
+                  <span>Rem: ${formatNumber(remaining)}</span>
+                </div>
+              ` : ''}
+            </div>
+
+            <div class="unified-bar-labels">
+              <div>
+                ${isOver ? `
+                  <span class="label-over-highlight">⚠️ Over budget by ${settings.currency} ${formatNumber(Math.abs(remaining))}</span>
+                ` : hasBudget ? `
+                  <span class="label-remaining-highlight">${settings.currency} ${formatNumber(remaining)} remaining</span>
+                  <span style="color: var(--text-muted); font-size: 0.7rem;">(${((remaining / budget) * 100).toFixed(0)}% left)</span>
+                ` : `
+                  <span style="color: var(--text-muted);">Set a monthly target to track remaining balance</span>
+                `}
+              </div>
+              <button type="button" class="btn-quick-edit-budget" data-cat="${item.cat.id}" title="Edit budget for ${escapeHTML(item.cat.name)}">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="11" height="11">
+                  <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/>
+                </svg>
+                ${hasBudget ? 'Edit' : '+ Set'}
+              </button>
+            </div>
           </div>
         </div>
       `;
     }).join('');
+  }
+
+  function getThresholdColorClass(pct) {
+    if (pct >= 100) return 'color-100';
+    if (pct >= 90) return 'color-90';
+    if (pct >= 75) return 'color-75';
+    if (pct >= 50) return 'color-50';
+    return 'color-normal';
   }
 
   // --- CSV Export Logic ---
@@ -814,12 +1068,368 @@
     saveTransactions();
     closeEditModal();
     showToast('Transaction updated');
+
+    // Recalculate spend to verify thresholds
+    const now = new Date();
+    const currentMonthPrefix = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    if (dVal && dVal.startsWith(currentMonthPrefix)) {
+      const catSpent = transactions
+        .filter(t => t.categoryId === catObj.id && t.date && t.date.startsWith(currentMonthPrefix))
+        .reduce((sum, t) => sum + t.amount, 0);
+      checkBudgetThresholds(catObj.id, 0, catSpent);
+    }
   }
 
   function closeEditModal() {
     editingTxId = null;
     const modal = document.getElementById('edit-modal');
     if (modal) modal.classList.remove('active');
+  }
+
+  // ==========================================================================
+  // BUDGET ALERTS & NOTIFICATIONS (50%, 75%, 90%, 100%)
+  // ==========================================================================
+
+  // Synthesize clean audio chimes using Web Audio API (Zero external assets needed)
+  function playBudgetAlertChime(level) {
+    try {
+      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      if (!AudioCtx) return;
+      const ctx = new AudioCtx();
+      
+      const freqs = level >= 100 
+        ? [880, 698, 880] // Urgent 100% warning chord
+        : level >= 90 
+        ? [784, 880]     // Critical 90% double pulse
+        : level >= 75 
+        ? [659, 784]     // Warning 75% prompt
+        : [523, 659];    // 50% Milestone chime
+
+      freqs.forEach((freq, idx) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = level >= 90 ? 'triangle' : 'sine';
+        osc.frequency.setValueAtTime(freq, ctx.currentTime + idx * 0.12);
+        gain.gain.setValueAtTime(0.18, ctx.currentTime + idx * 0.12);
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + (idx + 1) * 0.15);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(ctx.currentTime + idx * 0.12);
+        osc.stop(ctx.currentTime + (idx + 1) * 0.18);
+      });
+    } catch (e) {
+      console.log('Audio chime not available or user interaction needed:', e);
+    }
+  }
+
+  function checkBudgetThresholds(categoryId, oldSpent, newSpent) {
+    const budget = Number(settings.budgets[categoryId]) || 0;
+    if (budget <= 0) return; // No budget set for this category
+
+    const categoryObj = CATEGORIES.find(c => c.id === categoryId);
+    if (!categoryObj) return;
+
+    const now = new Date();
+    const currentMonthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    const oldPct = (oldSpent / budget) * 100;
+    const newPct = (newSpent / budget) * 100;
+
+    const thresholds = [50, 75, 90, 100];
+    let triggeredThreshold = null;
+
+    thresholds.forEach(t => {
+      const alertKey = `${currentMonthKey}_${categoryId}_${t}`;
+      if (oldPct < t && newPct >= t && !alertedThresholds[alertKey]) {
+        triggeredThreshold = t;
+        alertedThresholds[alertKey] = true;
+      }
+    });
+
+    if (triggeredThreshold !== null) {
+      saveAlertedThresholds();
+      fireBudgetAlert(categoryObj, triggeredThreshold, newSpent, budget);
+    }
+  }
+
+  function fireBudgetAlert(categoryObj, threshold, spent, budget) {
+    const remaining = Math.max(0, budget - spent);
+    const isOver = spent > budget;
+
+    // 1. Play Audio Chime & Trigger Haptics
+    playBudgetAlertChime(threshold);
+    if (window.navigator && window.navigator.vibrate) {
+      try {
+        window.navigator.vibrate(threshold >= 90 ? [120, 60, 120, 60, 150] : [100, 50, 100]);
+      } catch (e) {}
+    }
+
+    // 2. Trigger Real Native Browser Push Notification (if permitted)
+    if ('Notification' in window && Notification.permission === 'granted') {
+      try {
+        const title = threshold >= 100 
+          ? `🛑 100% Budget Reached: ${categoryObj.name}`
+          : threshold >= 90
+          ? `🚨 90% Critical Alert: ${categoryObj.name}`
+          : threshold >= 75
+          ? `⚠️ 75% Budget Warning: ${categoryObj.name}`
+          : `ℹ️ 50% Milestone: ${categoryObj.name}`;
+
+        const body = isOver 
+          ? `Exceeded monthly budget! Spent: ${settings.currency} ${formatNumber(spent)} of ${settings.currency} ${formatNumber(budget)}.`
+          : `Spent: ${settings.currency} ${formatNumber(spent)} of ${settings.currency} ${formatNumber(budget)}. Only ${settings.currency} ${formatNumber(remaining)} remaining.`;
+
+        new Notification(title, {
+          body: body,
+          icon: './icons/icon-192.png',
+          badge: './icons/icon-192.png',
+          tag: `budget_${categoryObj.id}_${threshold}`
+        });
+      } catch (err) {
+        console.warn('System push notification error:', err);
+      }
+    }
+
+    // 3. Open High-Impact In-App Alert Modal
+    openBudgetAlertModal(categoryObj, threshold, spent, budget, remaining);
+  }
+
+  function openBudgetAlertModal(categoryObj, threshold, spent, budget, remaining) {
+    const modal = document.getElementById('budget-alert-modal');
+    const badge = document.getElementById('alert-popup-badge');
+    const title = document.getElementById('modal-alert-title');
+    const msg = document.getElementById('alert-popup-message');
+    const spentTxt = document.getElementById('alert-popup-spent-txt');
+    const remTxt = document.getElementById('alert-popup-rem-txt');
+    const barSpent = document.getElementById('alert-popup-bar-spent');
+    const barRem = document.getElementById('alert-popup-bar-rem');
+    const barSpentTxt = document.getElementById('alert-popup-bar-spent-txt');
+    const barRemTxt = document.getElementById('alert-popup-bar-rem-txt');
+    const barTrack = document.getElementById('alert-popup-bar');
+
+    if (!modal) return;
+
+    badge.className = `alert-popup-icon-badge badge-${threshold}`;
+
+    if (threshold >= 100) {
+      badge.textContent = '🛑';
+      title.textContent = `100% Limit Reached: ${categoryObj.name}`;
+      msg.innerHTML = `You have reached <b>100%</b> of your monthly budget for <b>${escapeHTML(categoryObj.name)}</b>. Total spent: <b>${settings.currency} ${formatNumber(spent)}</b> of ${settings.currency} ${formatNumber(budget)}.`;
+    } else if (threshold >= 90) {
+      badge.textContent = '🚨';
+      title.textContent = `90% Critical Alert: ${categoryObj.name}`;
+      msg.innerHTML = `You have reached <b>90%</b> of your <b>${escapeHTML(categoryObj.name)}</b> budget! Only <b>${settings.currency} ${formatNumber(remaining)}</b> remains for this month.`;
+    } else if (threshold >= 75) {
+      badge.textContent = '⚠️';
+      title.textContent = `75% Budget Warning: ${categoryObj.name}`;
+      msg.innerHTML = `You have reached <b>75%</b> of your <b>${escapeHTML(categoryObj.name)}</b> monthly budget. Remaining balance: <b>${settings.currency} ${formatNumber(remaining)}</b>.`;
+    } else {
+      badge.textContent = 'ℹ️';
+      title.textContent = `50% Milestone: ${categoryObj.name}`;
+      msg.innerHTML = `You have used half (<b>50%</b>) of your <b>${escapeHTML(categoryObj.name)}</b> budget (<b>${settings.currency} ${formatNumber(spent)}</b> / ${settings.currency} ${formatNumber(budget)}).`;
+    }
+
+    const pct = Math.min(100, (spent / budget) * 100);
+    const remPct = Math.max(0, 100 - pct);
+
+    if (spentTxt) spentTxt.textContent = `Spent: ${settings.currency} ${formatNumber(spent)}`;
+    if (remTxt) {
+      if (spent > budget) {
+        remTxt.textContent = `Over by ${settings.currency} ${formatNumber(spent - budget)}`;
+        remTxt.className = 'label-over-highlight';
+      } else {
+        remTxt.textContent = `Remaining: ${settings.currency} ${formatNumber(remaining)}`;
+        remTxt.className = 'label-remaining-highlight';
+      }
+    }
+
+    if (barSpent) {
+      barSpent.style.width = `${pct}%`;
+      barSpent.className = 'bar-segment-spent ' + getThresholdColorClass(pct);
+    }
+    if (barSpentTxt) barSpentTxt.textContent = `${pct.toFixed(0)}%`;
+
+    if (barRem) {
+      barRem.style.width = `${remPct}%`;
+      barRem.style.display = (spent > budget) ? 'none' : 'flex';
+    }
+    if (barRemTxt) barRemTxt.textContent = `${settings.currency} ${formatNumber(remaining)}`;
+
+    modal.classList.add('active');
+  }
+
+  // --- Budget Manager Modal (All 13 Categories) ---
+  function openBudgetManagerModal() {
+    const modal = document.getElementById('budget-manager-modal');
+    const list = document.getElementById('budget-manager-list');
+    const totalSumEl = document.getElementById('budget-modal-total-sum');
+
+    if (!modal || !list) return;
+
+    let currentTotal = 0;
+    const now = new Date();
+    const currentMonthPrefix = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+
+    list.innerHTML = CATEGORIES.map(cat => {
+      const bVal = Number(settings.budgets[cat.id]) || 0;
+      currentTotal += bVal;
+
+      const catSpent = transactions
+        .filter(t => t.categoryId === cat.id && t.date && t.date.startsWith(currentMonthPrefix))
+        .reduce((sum, t) => sum + t.amount, 0);
+
+      return `
+        <div class="budget-input-row" data-cat="${cat.id}">
+          <div class="budget-input-label">
+            <span class="cat-dot" style="background: ${cat.color};"></span>
+            <div>
+              <div style="font-size: 0.9rem; font-weight: 700;">${escapeHTML(cat.name)}</div>
+              <div style="font-size: 0.72rem; color: var(--text-muted);">Spent: ${settings.currency} ${formatNumber(catSpent)}</div>
+            </div>
+          </div>
+          <div style="display: flex; align-items: center; gap: 4px;">
+            <span style="font-size: 0.78rem; font-weight: 700; color: var(--text-secondary);">${settings.currency}</span>
+            <input type="number" 
+                   class="budget-number-input" 
+                   data-cat="${cat.id}" 
+                   value="${bVal}" 
+                   min="0" 
+                   step="any"
+                   placeholder="0">
+          </div>
+        </div>
+      `;
+    }).join('');
+
+    if (totalSumEl) totalSumEl.textContent = `Total: ${settings.currency} ${formatNumber(currentTotal)}`;
+
+    // Live update total sum when user modifies any input
+    list.querySelectorAll('.budget-number-input').forEach(input => {
+      input.addEventListener('input', () => {
+        let sum = 0;
+        list.querySelectorAll('.budget-number-input').forEach(i => {
+          sum += parseFloat(i.value) || 0;
+        });
+        if (totalSumEl) totalSumEl.textContent = `Total: ${settings.currency} ${formatNumber(sum)}`;
+      });
+    });
+
+    modal.classList.add('active');
+  }
+
+  function saveAllBudgets() {
+    const list = document.getElementById('budget-manager-list');
+    if (!list) return;
+
+    list.querySelectorAll('.budget-number-input').forEach(input => {
+      const catId = input.getAttribute('data-cat');
+      const val = parseFloat(input.value) || 0;
+      settings.budgets[catId] = Math.max(0, val);
+    });
+
+    saveSettings();
+    updateAnalytics();
+    closeBudgetManagerModal();
+    showToast('✅ All category budgets updated');
+  }
+
+  function closeBudgetManagerModal() {
+    document.getElementById('budget-manager-modal')?.classList.remove('active');
+  }
+
+  // --- Quick Single-Category Budget Modal ---
+  function openQuickBudgetModal(categoryId) {
+    const modal = document.getElementById('quick-budget-modal');
+    const title = document.getElementById('modal-quick-budget-title');
+    const desc = document.getElementById('quick-budget-desc');
+    const input = document.getElementById('quick-budget-amount-input');
+    const spendEl = document.getElementById('quick-budget-current-spend');
+
+    const catObj = CATEGORIES.find(c => c.id === categoryId);
+    if (!modal || !catObj) return;
+
+    editingBudgetId = categoryId;
+    title.textContent = `Budget: ${catObj.name}`;
+    desc.textContent = `Set monthly budget limit for ${catObj.name}. Alerts trigger at 50%, 75%, 90%, and 100%.`;
+
+    const now = new Date();
+    const currentMonthPrefix = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    const catSpent = transactions
+      .filter(t => t.categoryId === categoryId && t.date && t.date.startsWith(currentMonthPrefix))
+      .reduce((sum, t) => sum + t.amount, 0);
+
+    input.value = settings.budgets[categoryId] || 0;
+    if (spendEl) spendEl.textContent = `Spent this month: ${settings.currency} ${formatNumber(catSpent)}`;
+
+    modal.classList.add('active');
+    setTimeout(() => input.focus(), 150);
+  }
+
+  function saveQuickBudget() {
+    if (!editingBudgetId) return;
+    const input = document.getElementById('quick-budget-amount-input');
+    const val = parseFloat(input.value) || 0;
+
+    settings.budgets[editingBudgetId] = Math.max(0, val);
+    saveSettings();
+    updateAnalytics();
+    closeQuickBudgetModal();
+
+    const catObj = CATEGORIES.find(c => c.id === editingBudgetId);
+    showToast(`✅ Budget for ${catObj ? catObj.name : ''} set to ${settings.currency} ${formatNumber(val)}`);
+    editingBudgetId = null;
+  }
+
+  function closeQuickBudgetModal() {
+    editingBudgetId = null;
+    document.getElementById('quick-budget-modal')?.classList.remove('active');
+  }
+
+  // --- Push Notifications Settings Helper ---
+  function updateNotificationStatusUI() {
+    const statusText = document.getElementById('push-notification-status-text');
+    const btn = document.getElementById('btn-enable-push-notifications');
+    if (!statusText || !btn) return;
+
+    if (!('Notification' in window)) {
+      statusText.textContent = 'In-app audio & modal alerts active';
+      btn.style.display = 'none';
+      return;
+    }
+
+    if (Notification.permission === 'granted') {
+      statusText.textContent = 'Push, Audio & Modal alerts active';
+      btn.textContent = 'Active ✅';
+      btn.style.opacity = '0.7';
+    } else if (Notification.permission === 'denied') {
+      statusText.textContent = 'Push blocked in browser (In-app audio active)';
+      btn.textContent = 'Blocked';
+    } else {
+      statusText.textContent = 'In-app audio active (Enable for phone push)';
+      btn.textContent = 'Enable Push';
+    }
+  }
+
+  async function handleEnablePushNotifications() {
+    if (!('Notification' in window)) {
+      showToast('⚠️ Notifications not supported on this browser (in-app alerts will be used)');
+      return;
+    }
+
+    try {
+      const permission = await Notification.requestPermission();
+      updateNotificationStatusUI();
+      if (permission === 'granted') {
+        showToast('✅ Push notifications enabled for budget alerts (50%, 75%, 90%, 100%)!');
+        new Notification('My Spending Budget Alerts', {
+          body: 'Budget alerts enabled! You will be notified when spending reaches 50%, 75%, 90%, and 100%.',
+          icon: './icons/icon-192.png'
+        });
+      } else {
+        showToast('Push permission was not granted (in-app alerts will still trigger)');
+      }
+    } catch (e) {
+      console.warn('Notification permission error', e);
+    }
   }
 
   // --- Month Header Summary Badge ---
@@ -1174,6 +1784,45 @@
     }
 
     document.getElementById('btn-clear-all')?.addEventListener('click', handleClearAllData);
+
+    // Budget Manager Events
+    document.getElementById('btn-open-budget-manager')?.addEventListener('click', openBudgetManagerModal);
+    document.getElementById('btn-quick-set-budgets')?.addEventListener('click', openBudgetManagerModal);
+    document.getElementById('btn-settings-open-budgets')?.addEventListener('click', openBudgetManagerModal);
+    document.getElementById('budget-modal-cancel-btn')?.addEventListener('click', closeBudgetManagerModal);
+    document.getElementById('budget-modal-save-btn')?.addEventListener('click', saveAllBudgets);
+    document.getElementById('budget-manager-modal')?.addEventListener('click', (e) => {
+      if (e.target.id === 'budget-manager-modal') closeBudgetManagerModal();
+    });
+
+    // Single Category Quick Budget Modal Events
+    document.getElementById('quick-budget-cancel-btn')?.addEventListener('click', closeQuickBudgetModal);
+    document.getElementById('quick-budget-save-btn')?.addEventListener('click', saveQuickBudget);
+    document.getElementById('quick-budget-modal')?.addEventListener('click', (e) => {
+      if (e.target.id === 'quick-budget-modal') closeQuickBudgetModal();
+    });
+
+    // Delegated click for "Edit Budget" buttons across analytics cards and alerts
+    document.addEventListener('click', (e) => {
+      const editBtn = e.target.closest('.btn-quick-edit-budget');
+      if (editBtn) {
+        const catId = editBtn.getAttribute('data-cat');
+        if (catId) openQuickBudgetModal(catId);
+      }
+    });
+
+    // Budget Alert Modal Close
+    document.getElementById('budget-alert-modal-close')?.addEventListener('click', () => {
+      document.getElementById('budget-alert-modal')?.classList.remove('active');
+    });
+    document.getElementById('budget-alert-modal')?.addEventListener('click', (e) => {
+      if (e.target.id === 'budget-alert-modal') {
+        document.getElementById('budget-alert-modal')?.classList.remove('active');
+      }
+    });
+
+    // Push Notifications Toggle
+    document.getElementById('btn-enable-push-notifications')?.addEventListener('click', handleEnablePushNotifications);
 
     // Install instructions helper modal toggle
     document.getElementById('btn-how-to-install')?.addEventListener('click', () => {
