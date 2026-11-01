@@ -10,6 +10,26 @@
   const STORAGE_KEY = 'my_spending_transactions_v1';
   const SETTINGS_KEY = 'my_spending_settings_v1';
   const ALERTS_KEY = 'my_spending_alerted_thresholds_v1';
+  const PROFILE_STORAGE_KEY = 'my_spending_device_profile_v1';
+  const DEFAULT_HOUSEHOLD_ID = 'amjad_family';
+
+  // Google Firebase Configuration (Project: spending-tracker-6db2d)
+  const FIREBASE_CONFIG = {
+    apiKey: "AIzaSyCZV_am4fczF_wwHI8XtZKepX7uS8kBLl8",
+    authDomain: "spending-tracker-6db2d.firebaseapp.com",
+    projectId: "spending-tracker-6db2d",
+    storageBucket: "spending-tracker-6db2d.firebasestorage.app",
+    messagingSenderId: "322899616916",
+    appId: "1:322899616916:web:c91fc0eb6e19e9533ec081",
+    measurementId: "G-0VXK48K8Z8"
+  };
+
+  // Family Members
+  const FAMILY_MEMBERS = [
+    { id: 'dad', name: 'Dad', avatar: '👨', color: '#3b82f6' },
+    { id: 'mom', name: 'Mom', avatar: '👩', color: '#ec4899' },
+    { id: 'son', name: 'Son', avatar: '👦', color: '#10b981' }
+  ];
 
   // Default Monthly Budgets for the 13 Categories (can be edited by user anytime)
   const DEFAULT_BUDGETS = {
@@ -175,23 +195,34 @@
   let activeTab = 'tab-add';
   let historySearchQuery = '';
   let historyCategoryFilter = 'all';
+  let historyMemberFilter = 'all'; // 'all', 'dad', 'mom', 'son'
+  let deviceProfile = 'dad'; // active member using this device
+  let selectedSpentBy = 'dad'; // member selected on add form
+  let editSelectedSpentBy = 'dad'; // member selected in edit modal
   let lastDeletedTx = null;
   let editingTxId = null;
   let editingBudgetId = null;
   let alertedThresholds = {};
   let stagedImportTransactions = [];
+  let db = null;
+  let firestoreUnsubscribe = null;
+  let firestoreBudgetsUnsubscribe = null;
+  let isSyncingFromCloud = false;
+  let cloudSyncStatus = 'offline';
 
   let settings = {
     currency: 'SAR',
     currencySymbol: 'SAR',
     theme: 'dark',
     budgets: Object.assign({}, DEFAULT_BUDGETS),
-    pushNotifications: false
+    pushNotifications: false,
+    householdId: DEFAULT_HOUSEHOLD_ID
   };
 
   // --- Initializer ---
   function init() {
     loadSettings();
+    loadDeviceProfile();
     loadTransactions();
     loadAlertedThresholds();
     applyTheme(settings.theme);
@@ -204,7 +235,58 @@
     updateCSVPreview();
     updateMonthSummaryBadge();
     updateNotificationStatusUI();
+    initFirebase();
     registerServiceWorker();
+  }
+
+  // --- Member Profiles & UI Helpers ---
+  function getMemberInfo(memberId) {
+    return FAMILY_MEMBERS.find(m => m.id === memberId) || FAMILY_MEMBERS[0];
+  }
+
+  function loadDeviceProfile() {
+    try {
+      const saved = localStorage.getItem(PROFILE_STORAGE_KEY);
+      if (saved && FAMILY_MEMBERS.some(m => m.id === saved)) {
+        deviceProfile = saved;
+      }
+    } catch (e) {}
+    selectedSpentBy = deviceProfile;
+    updateMemberSelectorsUI();
+  }
+
+  function setDeviceProfile(memberId) {
+    if (!FAMILY_MEMBERS.some(m => m.id === memberId)) return;
+    deviceProfile = memberId;
+    selectedSpentBy = memberId;
+    try {
+      localStorage.setItem(PROFILE_STORAGE_KEY, memberId);
+    } catch (e) {}
+    updateMemberSelectorsUI();
+    const mem = getMemberInfo(memberId);
+    showToast(`✅ Profile set to ${mem.avatar} ${mem.name} for this phone`);
+  }
+
+  function updateMemberSelectorsUI() {
+    // Form member pills
+    document.querySelectorAll('#form-member-selector .member-pill').forEach(btn => {
+      btn.classList.toggle('active', btn.getAttribute('data-member') === selectedSpentBy);
+    });
+
+    // Settings profile pills
+    document.querySelectorAll('#settings-profile-selector .member-pill').forEach(btn => {
+      btn.classList.toggle('active', btn.getAttribute('data-profile') === deviceProfile);
+    });
+
+    // History filter chips
+    document.querySelectorAll('#member-filter-row .member-filter-chip').forEach(btn => {
+      btn.classList.toggle('active', btn.getAttribute('data-member') === historyMemberFilter);
+    });
+
+    // Edit modal member pills
+    document.querySelectorAll('#edit-member-selector .member-pill').forEach(btn => {
+      btn.classList.toggle('active', btn.getAttribute('data-edit-member') === editSelectedSpentBy);
+    });
   }
 
   // --- Storage ---
@@ -223,13 +305,16 @@
     updateCurrencyDisplay();
   }
 
-  function saveSettings() {
+  function saveSettings(skipCloudSync = false) {
     try {
       localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
     } catch (e) {
       console.error('Error saving settings', e);
     }
     updateCurrencyDisplay();
+    if (!skipCloudSync && db) {
+      uploadBudgetsToCloud(settings.budgets);
+    }
   }
 
   function loadAlertedThresholds() {
@@ -274,6 +359,210 @@
     updateAnalytics();
     updateCSVPreview();
     updateMonthSummaryBadge();
+  }
+
+  // ==========================================================================
+  // FIREBASE CLOUD FIRESTORE REAL-TIME SYNC
+  // ==========================================================================
+
+  function initFirebase() {
+    if (typeof firebase === 'undefined') {
+      console.warn('Firebase SDK not loaded, using offline local storage');
+      updateCloudStatusUI('offline', 'Offline');
+      return;
+    }
+
+    try {
+      if (!firebase.apps || !firebase.apps.length) {
+        firebase.initializeApp(FIREBASE_CONFIG);
+      }
+      db = firebase.firestore();
+
+      // Enable offline persistence in browser
+      db.enablePersistence({ synchronizeTabs: true }).catch((err) => {
+        if (err.code === 'failed-precondition') {
+          console.warn('Firestore multi-tab persistence active');
+        } else {
+          console.warn('Firestore persistence status:', err.code);
+        }
+      });
+
+      updateCloudStatusUI('syncing', 'Connecting...');
+      setupFirestoreListeners();
+    } catch (err) {
+      console.error('Firebase initialization error:', err);
+      updateCloudStatusUI('offline', 'Sync Error');
+    }
+  }
+
+  function updateCloudStatusUI(status, label) {
+    cloudSyncStatus = status;
+    const headerPill = document.getElementById('cloud-status-pill');
+    const headerText = document.getElementById('cloud-status-text');
+    const settingsBadge = document.getElementById('settings-cloud-badge');
+    const settingsText = document.getElementById('settings-cloud-text');
+
+    const statusClass = status === 'connected' ? 'connected' : status === 'syncing' ? 'syncing' : 'offline';
+    const headerLabel = (status === 'connected' ? 'Live' : status === 'syncing' ? 'Syncing' : 'Offline');
+    const fullText = label || (status === 'connected' ? 'Live Cloud Sync' : status === 'syncing' ? 'Syncing...' : 'Offline');
+
+    if (headerPill) {
+      headerPill.className = `cloud-status-pill ${statusClass}`;
+    }
+    if (headerText) headerText.textContent = headerLabel;
+    if (settingsBadge) {
+      settingsBadge.className = `cloud-status-pill ${statusClass}`;
+    }
+    if (settingsText) settingsText.textContent = fullText;
+  }
+
+  function setupFirestoreListeners() {
+    if (!db) return;
+    const householdId = settings.householdId || DEFAULT_HOUSEHOLD_ID;
+
+    // 1. Listen for real-time transactions across all family devices
+    const txCollection = db.collection('households').doc(householdId).collection('transactions');
+
+    firestoreUnsubscribe = txCollection.onSnapshot((snapshot) => {
+      isSyncingFromCloud = true;
+      const cloudTxs = [];
+      snapshot.forEach((doc) => {
+        const data = doc.data();
+        if (data && data.id) {
+          cloudTxs.push(data);
+        }
+      });
+
+      if (cloudTxs.length > 0) {
+        // If we had local transactions not in cloud, upload them to cloud
+        const cloudIds = new Set(cloudTxs.map(t => t.id));
+        let missingUploadCount = 0;
+        transactions.forEach((localTx) => {
+          if (!cloudIds.has(localTx.id)) {
+            uploadTransactionToCloud(localTx);
+            cloudTxs.push(localTx);
+            missingUploadCount++;
+          }
+        });
+
+        // Sort descending by timestamp
+        cloudTxs.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+        transactions = cloudTxs;
+
+        try {
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(transactions));
+        } catch (e) {}
+
+        renderTransactionsHistory();
+        updateAnalytics();
+        updateCSVPreview();
+        updateMonthSummaryBadge();
+        updateCloudStatusUI('connected', 'Live Sync');
+
+        if (missingUploadCount > 0) {
+          showToast(`☁️ Synced ${missingUploadCount} offline expenditures to family cloud!`);
+        }
+      } else if (transactions.length > 0) {
+        // Cloud is empty but we have local records: upload all existing transactions to cloud!
+        uploadAllLocalTransactionsToCloud();
+      } else {
+        updateCloudStatusUI('connected', 'Live Sync');
+      }
+
+      isSyncingFromCloud = false;
+    }, (err) => {
+      console.warn('Firestore snapshot error:', err);
+      updateCloudStatusUI('offline', 'Offline');
+      isSyncingFromCloud = false;
+    });
+
+    // 2. Listen for shared category budgets
+    const budgetDoc = db.collection('households').doc(householdId).collection('settings').doc('budgets');
+    firestoreBudgetsUnsubscribe = budgetDoc.onSnapshot((doc) => {
+      if (doc.exists) {
+        const cloudBudgets = doc.data();
+        if (cloudBudgets) {
+          settings.budgets = Object.assign({}, DEFAULT_BUDGETS, cloudBudgets);
+          saveSettings(true); // skip re-uploading
+          updateAnalytics();
+        }
+      }
+    }, (err) => {
+      console.warn('Firestore budget snapshot error:', err);
+    });
+  }
+
+  function uploadTransactionToCloud(tx) {
+    if (!db) return;
+    const householdId = settings.householdId || DEFAULT_HOUSEHOLD_ID;
+    updateCloudStatusUI('syncing', 'Syncing...');
+
+    // Ensure member metadata exists
+    if (!tx.spentBy) {
+      const mem = getMemberInfo(deviceProfile || 'dad');
+      tx.spentBy = mem.id;
+      tx.spentByName = mem.name;
+      tx.spentByAvatar = mem.avatar;
+    }
+
+    db.collection('households').doc(householdId).collection('transactions').doc(tx.id).set(tx)
+      .then(() => {
+        updateCloudStatusUI('connected', 'Live Sync');
+      })
+      .catch((err) => {
+        console.warn('Firestore upload tx error:', err);
+        updateCloudStatusUI('offline', 'Offline (Queued)');
+      });
+  }
+
+  function deleteTransactionFromCloud(txId) {
+    if (!db) return;
+    const householdId = settings.householdId || DEFAULT_HOUSEHOLD_ID;
+    updateCloudStatusUI('syncing', 'Syncing...');
+    db.collection('households').doc(householdId).collection('transactions').doc(txId).delete()
+      .then(() => {
+        updateCloudStatusUI('connected', 'Live Sync');
+      })
+      .catch((err) => {
+        console.warn('Firestore delete tx error:', err);
+        updateCloudStatusUI('offline', 'Offline (Queued)');
+      });
+  }
+
+  function uploadBudgetsToCloud(budgets) {
+    if (!db) return;
+    const householdId = settings.householdId || DEFAULT_HOUSEHOLD_ID;
+    db.collection('households').doc(householdId).collection('settings').doc('budgets').set(budgets)
+      .catch((err) => console.warn('Firestore budget upload error:', err));
+  }
+
+  function uploadAllLocalTransactionsToCloud() {
+    if (!db || transactions.length === 0) return;
+    const householdId = settings.householdId || DEFAULT_HOUSEHOLD_ID;
+    updateCloudStatusUI('syncing', 'Uploading...');
+    const batch = db.batch();
+    const col = db.collection('households').doc(householdId).collection('transactions');
+
+    transactions.forEach((tx) => {
+      if (!tx.spentBy) {
+        const mem = getMemberInfo(deviceProfile || 'dad');
+        tx.spentBy = mem.id;
+        tx.spentByName = mem.name;
+        tx.spentByAvatar = mem.avatar;
+      }
+      const ref = col.doc(tx.id);
+      batch.set(ref, tx);
+    });
+
+    batch.commit()
+      .then(() => {
+        updateCloudStatusUI('connected', 'Live Sync');
+        showToast('☁️ All expenditures synced to family cloud!');
+      })
+      .catch((err) => {
+        console.warn('Batch upload error:', err);
+        updateCloudStatusUI('offline', 'Offline (Queued)');
+      });
   }
 
   // --- Category Grid Rendering ---
@@ -409,6 +698,7 @@
 
     const categoryObj = CATEGORIES.find(c => c.id === selectedCategory) || CATEGORIES[0];
     const timestampObj = getActiveTimestamp();
+    const memInfo = getMemberInfo(selectedSpentBy || deviceProfile || 'dad');
 
     // Calculate current category spend before adding this transaction
     const now = new Date();
@@ -423,6 +713,9 @@
       currency: settings.currency,
       categoryId: categoryObj.id,
       categoryName: categoryObj.name,
+      spentBy: memInfo.id,
+      spentByName: memInfo.name,
+      spentByAvatar: memInfo.avatar,
       notes: notesInput.value.trim(),
       date: formatDateYMD(timestampObj),
       time: formatTimeHMS(timestampObj),
@@ -432,6 +725,11 @@
     // Prepend to list (newest first)
     transactions.unshift(newTransaction);
     saveTransactions();
+
+    // Upload to Firebase Cloud
+    if (db) {
+      uploadTransactionToCloud(newTransaction);
+    }
 
     // Check if new transaction falls in this month to check threshold
     if (newTransaction.date && newTransaction.date.startsWith(currentMonthPrefix)) {
@@ -446,7 +744,7 @@
     updateDateSelectorUI();
 
     triggerHaptic();
-    showToast(`✅ Added ${settings.currency} ${formatNumber(newTransaction.amount)} in ${categoryObj.name}`, true, newTransaction.id);
+    showToast(`✅ ${memInfo.avatar} Added ${settings.currency} ${formatNumber(newTransaction.amount)} in ${categoryObj.name}`, true, newTransaction.id);
   }
 
   // --- Render Transaction History ---
@@ -461,12 +759,18 @@
       filtered = filtered.filter(tx => tx.categoryId === historyCategoryFilter);
     }
 
+    // Filter by Family Member
+    if (historyMemberFilter !== 'all') {
+      filtered = filtered.filter(tx => (tx.spentBy || 'dad') === historyMemberFilter);
+    }
+
     // Filter by Search Query
     if (historySearchQuery) {
       const q = historySearchQuery.toLowerCase();
       filtered = filtered.filter(tx => 
         (tx.notes && tx.notes.toLowerCase().includes(q)) ||
         (tx.categoryName && tx.categoryName.toLowerCase().includes(q)) ||
+        (tx.spentByName && tx.spentByName.toLowerCase().includes(q)) ||
         (tx.amount.toString().includes(q))
       );
     }
@@ -534,6 +838,7 @@
               };
 
               const timeDisplay = formatTime12(tx.time);
+              const mem = getMemberInfo(tx.spentBy || 'dad');
 
               return `
                 <div class="transaction-card" data-id="${tx.id}">
@@ -544,7 +849,9 @@
                     <div class="tx-details">
                       <div class="tx-category-title">${escapeHTML(cat.name)}</div>
                       ${tx.notes ? `<div class="tx-notes">${escapeHTML(tx.notes)}</div>` : ''}
-                      <div class="tx-meta">${timeDisplay}</div>
+                      <div class="tx-meta">
+                        ${timeDisplay} • <span class="tx-member-pill member-${mem.id}">${mem.avatar} ${escapeHTML(mem.name)}</span>
+                      </div>
                     </div>
                   </div>
                   <div class="tx-right">
@@ -853,7 +1160,7 @@
     list.sort((a, b) => a.timestamp - b.timestamp);
 
     // Header columns
-    const headers = ['Date', 'Time', 'Category', 'Amount', 'Currency', 'Notes', 'Transaction_ID'];
+    const headers = ['Date', 'Time', 'Category', 'Spent_By', 'Amount', 'Currency', 'Notes', 'Transaction_ID'];
     const rows = [headers.join(',')];
 
     list.forEach(tx => {
@@ -863,10 +1170,13 @@
         return `"${str}"`;
       };
 
+      const mem = getMemberInfo(tx.spentBy || 'dad');
+
       const row = [
         escapeCSV(tx.date),
         escapeCSV(tx.time),
         escapeCSV(tx.categoryName),
+        escapeCSV(mem.name),
         tx.amount.toFixed(2),
         escapeCSV(tx.currency || settings.currency),
         escapeCSV(tx.notes || ''),
@@ -1120,6 +1430,7 @@
               if (cell.includes('date')) colMap.date = idx;
               else if (cell.includes('time')) colMap.time = idx;
               else if (cell.includes('cat')) colMap.category = idx;
+              else if (cell.includes('spent') || cell.includes('member') || cell.includes('user') || cell.includes('who') || cell.includes('person')) colMap.spentBy = idx;
               else if (cell.includes('amount') || cell.includes('spend') || cell.includes('cost') || cell.includes('total')) colMap.amount = idx;
               else if (cell.includes('curr')) colMap.currency = idx;
               else if (cell.includes('note') || cell.includes('desc') || cell.includes('memo')) colMap.notes = idx;
@@ -1208,6 +1519,15 @@
             ? existingId 
             : 'tx_imp_' + Date.now() + '_' + idx + '_' + Math.random().toString(36).substr(2, 4);
 
+          // Parse Spent By
+          let mem = getMemberInfo(deviceProfile || 'dad');
+          if (colMap.spentBy !== undefined && row[colMap.spentBy]) {
+            const rawM = String(row[colMap.spentBy]).trim().toLowerCase();
+            if (rawM.includes('mom') || rawM.includes('wife')) mem = getMemberInfo('mom');
+            else if (rawM.includes('son') || rawM.includes('kid') || rawM.includes('child')) mem = getMemberInfo('son');
+            else if (rawM.includes('dad') || rawM.includes('father') || rawM.includes('husband')) mem = getMemberInfo('dad');
+          }
+
           const dtObj = new Date(`${dateYMD}T${timeHMS}`);
           const timestamp = isNaN(dtObj.getTime()) ? Date.now() : dtObj.getTime();
 
@@ -1217,6 +1537,9 @@
             currency: (row[colMap.currency] || settings.currency).trim(),
             categoryId: matchedCat.id,
             categoryName: matchedCat.name,
+            spentBy: mem.id,
+            spentByName: mem.name,
+            spentByAvatar: mem.avatar,
             notes: notes,
             date: dateYMD,
             time: timeHMS,
@@ -1338,6 +1661,11 @@
     triggerHaptic();
     showToast(`✅ Successfully imported ${count} expenditures from CSV!`);
 
+    // Upload to Firebase Cloud
+    if (db) {
+      uploadAllLocalTransactionsToCloud();
+    }
+
     // Switch to History tab so user immediately sees their imported data
     switchTab('tab-history');
   }
@@ -1359,6 +1687,10 @@
     transactions.splice(idx, 1);
     saveTransactions();
 
+    if (db) {
+      deleteTransactionFromCloud(txId);
+    }
+
     triggerHaptic();
     showToast(`Deleted "${lastDeletedTx.categoryName}"`, true, 'undo_delete');
   }
@@ -1367,6 +1699,11 @@
     if (!lastDeletedTx) return;
     transactions.unshift(lastDeletedTx);
     saveTransactions();
+
+    if (db) {
+      uploadTransactionToCloud(lastDeletedTx);
+    }
+
     lastDeletedTx = null;
     showToast('Transaction restored!');
   }
@@ -1377,6 +1714,8 @@
     if (!tx) return;
 
     editingTxId = txId;
+    editSelectedSpentBy = tx.spentBy || 'dad';
+
     const modal = document.getElementById('edit-modal');
     const amountInput = document.getElementById('edit-amount-input');
     const categorySelect = document.getElementById('edit-category-select');
@@ -1388,6 +1727,11 @@
     dateInput.value = tx.date;
     timeInput.value = tx.time.substr(0, 5);
     notesInput.value = tx.notes || '';
+
+    // Update edit member selector
+    document.querySelectorAll('#edit-member-selector .member-pill').forEach(btn => {
+      btn.classList.toggle('active', btn.getAttribute('data-edit-member') === editSelectedSpentBy);
+    });
 
     // Populate categories in modal
     categorySelect.innerHTML = CATEGORIES.map(c => `
@@ -1417,6 +1761,7 @@
     }
 
     const catObj = CATEGORIES.find(c => c.id === categorySelect.value) || CATEGORIES[0];
+    const memInfo = getMemberInfo(editSelectedSpentBy);
     const dVal = dateInput.value || transactions[idx].date;
     const tVal = (timeInput.value ? timeInput.value + ':00' : transactions[idx].time);
 
@@ -1426,12 +1771,20 @@
     transactions[idx].amount = Math.round(amt * 100) / 100;
     transactions[idx].categoryId = catObj.id;
     transactions[idx].categoryName = catObj.name;
+    transactions[idx].spentBy = memInfo.id;
+    transactions[idx].spentByName = memInfo.name;
+    transactions[idx].spentByAvatar = memInfo.avatar;
     transactions[idx].date = dVal;
     transactions[idx].time = tVal;
     transactions[idx].timestamp = ts;
     transactions[idx].notes = notesInput.value.trim();
 
     saveTransactions();
+
+    if (db) {
+      uploadTransactionToCloud(transactions[idx]);
+    }
+
     closeEditModal();
     showToast('Transaction updated');
 
@@ -2089,6 +2442,75 @@
         }
       });
     }
+
+    // History Member Filter Row
+    const memberFilterContainer = document.getElementById('member-filter-row');
+    if (memberFilterContainer) {
+      memberFilterContainer.addEventListener('click', (e) => {
+        const chip = e.target.closest('.member-filter-chip');
+        if (chip) {
+          historyMemberFilter = chip.getAttribute('data-member') || 'all';
+          updateMemberSelectorsUI();
+          renderTransactionsHistory();
+        }
+      });
+    }
+
+    // Form Spent By Member Selector
+    const formMemberSelector = document.getElementById('form-member-selector');
+    if (formMemberSelector) {
+      formMemberSelector.addEventListener('click', (e) => {
+        const pill = e.target.closest('.member-pill');
+        if (pill) {
+          selectedSpentBy = pill.getAttribute('data-member') || 'dad';
+          updateMemberSelectorsUI();
+          triggerHaptic();
+        }
+      });
+    }
+
+    // Settings Profile Selector ("Who is using this phone?")
+    const settingsProfileSelector = document.getElementById('settings-profile-selector');
+    if (settingsProfileSelector) {
+      settingsProfileSelector.addEventListener('click', (e) => {
+        const pill = e.target.closest('.member-pill');
+        if (pill) {
+          const profileId = pill.getAttribute('data-profile');
+          if (profileId) {
+            setDeviceProfile(profileId);
+            triggerHaptic();
+          }
+        }
+      });
+    }
+
+    // Edit Modal Member Selector
+    const editMemberSelector = document.getElementById('edit-member-selector');
+    if (editMemberSelector) {
+      editMemberSelector.addEventListener('click', (e) => {
+        const pill = e.target.closest('.member-pill');
+        if (pill) {
+          editSelectedSpentBy = pill.getAttribute('data-edit-member') || 'dad';
+          document.querySelectorAll('#edit-member-selector .member-pill').forEach(btn => {
+            btn.classList.toggle('active', btn.getAttribute('data-edit-member') === editSelectedSpentBy);
+          });
+          triggerHaptic();
+        }
+      });
+    }
+
+    // Force Cloud Sync Button
+    document.getElementById('btn-force-sync')?.addEventListener('click', () => {
+      triggerHaptic();
+      if (!db) {
+        showToast('⚠️ Connecting to Firebase...');
+        initFirebase();
+        return;
+      }
+      uploadAllLocalTransactionsToCloud();
+      uploadBudgetsToCloud(settings.budgets);
+      showToast('☁️ Synced all expenditures and budgets with Family Cloud!');
+    });
 
     // Transaction Action buttons (Edit & Delete delegation)
     const txContainer = document.getElementById('transactions-container');

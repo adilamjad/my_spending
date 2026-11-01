@@ -1,5 +1,5 @@
-Date,Time,Category,Amount,Currency,Notes,Transaction_ID
-2026-11-01,10:15:00,School,1500.00,SAR,Term 1 tuition fees,tx_import_school_1
-2026-11-01,12:30:00,Bills,350.50,SAR,Electricity and water,tx_import_bills_1
-2026-11-01,14:45:00,Medicine,120.00,SAR,Pharmacy cough syrup,tx_import_med_1
-2026-11-01,16:00:00,Pakistan,850.00,SAR,Remittance transfer,tx_import_pak_1
+Date,Time,Category,Spent_By,Amount,Currency,Notes,Transaction_ID
+2026-11-01,10:15:00,School,Dad,1500.00,SAR,Term 1 tuition fees,tx_import_school_1
+2026-11-01,12:30:00,Bills,Mom,350.50,SAR,Electricity and water,tx_import_bills_1
+2026-11-01,14:45:00,Medicine,Mom,120.00,SAR,Pharmacy cough syrup,tx_import_med_1
+2026-11-01,16:00:00,Pakistan,Dad,850.00,SAR,Remittance transfer,tx_import_pak_1

@@ -1,5 +1,5 @@
 // Service Worker for My Spending PWA
-const CACHE_NAME = 'my-spending-v2';
+const CACHE_NAME = 'my-spending-v3';
 const ASSETS_TO_CACHE = [
   './',
   './index.html',
@@ -37,6 +37,11 @@ self.addEventListener('activate', (event) => {
 });
 
 self.addEventListener('fetch', (event) => {
+  // Only intercept same-origin GET requests for static assets (let Firebase network calls pass directly)
+  if (event.request.method !== 'GET' || !event.request.url.startsWith(self.location.origin)) {
+    return;
+  }
+
   // Navigation or static asset fallback
   event.respondWith(
     caches.match(event.request).then((cachedResponse) => {
