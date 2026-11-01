@@ -25,10 +25,11 @@
     'jeddah-groceries': 800,
     'kids': 500,
     'maria': 1000,
-    'iqama': 800
+    'iqama': 800,
+    'others': 500
   };
 
-  // The 13 Specific Categories requested by User
+  // The 14 Categories requested by User
   const CATEGORIES = [
     {
       id: 'rent',
@@ -133,11 +134,20 @@
       color: '#d97706',
       bg: 'rgba(217, 119, 6, 0.16)',
       glow: 'rgba(217, 119, 6, 0.35)'
+    },
+    {
+      id: 'others',
+      name: 'Others',
+      icon: 'more-horizontal',
+      color: '#64748b',
+      bg: 'rgba(100, 116, 139, 0.16)',
+      glow: 'rgba(100, 116, 139, 0.35)'
     }
   ];
 
   // SVG Icons collection
   const ICONS = {
+    'more-horizontal': `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="2" fill="currentColor"/><circle cx="19" cy="12" r="2" fill="currentColor"/><circle cx="5" cy="12" r="2" fill="currentColor"/></svg>`,
     'home': `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>`,
     'zap': `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>`,
     'shopping-cart': `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="21" r="1"/><circle cx="19" cy="21" r="1"/><path d="M2.05 2.05h2l2.66 12.42a2 2 0 0 0 2 1.58h9.78a2 2 0 0 0 1.95-1.57l1.65-7.43H5.12"/></svg>`,
@@ -1184,10 +1194,11 @@
             else if (low.includes('maria')) matchedCat = CATEGORIES.find(c => c.id === 'maria');
             else if (low.includes('iqama') || low.includes('visa')) matchedCat = CATEGORIES.find(c => c.id === 'iqama');
             else if (low.includes('service') || low.includes('repair') || low.includes('maint')) matchedCat = CATEGORIES.find(c => c.id === 'services');
+            else if (low.includes('other') || low.includes('misc') || low.includes('extra') || low.includes('general')) matchedCat = CATEGORIES.find(c => c.id === 'others');
           }
 
           if (!matchedCat) {
-            matchedCat = CATEGORIES[0]; // fallback
+            matchedCat = CATEGORIES.find(c => c.id === 'others') || CATEGORIES[0]; // fallback
           }
 
           // Parse Notes & ID
