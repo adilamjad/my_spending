@@ -1,5 +1,5 @@
 // Service Worker for My Spending PWA
-const CACHE_NAME = 'my-spending-v3';
+const CACHE_NAME = 'my-spending-v4';
 const ASSETS_TO_CACHE = [
   './',
   './index.html',

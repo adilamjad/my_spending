@@ -1940,4 +1940,111 @@ button:active {
   font-weight: 600;
 }
 
+/* ==========================================================================
+   SMS SYNC / BANK ALERT PARSER STYLING
+   ========================================================================== */
+
+.sms-sync-bar {
+  margin-bottom: 12px;
+}
+
+.btn-sms-sync {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px 14px;
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.15) 0%, rgba(139, 92, 246, 0.15) 100%);
+  border: 1px solid rgba(99, 102, 241, 0.35);
+  border-radius: var(--radius-md);
+  color: var(--text-primary);
+  font-size: 0.86rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+}
+
+.btn-sms-sync:active {
+  transform: scale(0.98);
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.25) 0%, rgba(139, 92, 246, 0.25) 100%);
+}
+
+.sms-sync-badge {
+  font-size: 0.65rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 2px 6px;
+  border-radius: var(--radius-full);
+  background: var(--primary);
+  color: #fff;
+  margin-left: 2px;
+}
+
+.sms-input-wrapper {
+  position: relative;
+}
+
+.sms-paste-btn {
+  position: absolute;
+  right: 8px;
+  top: 8px;
+  padding: 6px 12px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-size: 0.76rem;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  transition: all var(--transition-fast);
+  z-index: 2;
+}
+
+.sms-paste-btn:active {
+  transform: scale(0.95);
+  background: var(--primary);
+  color: #fff;
+}
+
+.sms-parsed-confidence {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--accent-green);
+  background: rgba(16, 185, 129, 0.12);
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+}
+
+.sms-review-card {
+  transition: all var(--transition-normal);
+}
+
+.member-pill.active[data-sms-member="dad"] {
+  background: rgba(59, 130, 246, 0.18);
+  border-color: #3b82f6;
+  color: #60a5fa;
+  box-shadow: 0 0 12px rgba(59, 130, 246, 0.3);
+}
+
+.member-pill.active[data-sms-member="mom"] {
+  background: rgba(236, 72, 153, 0.18);
+  border-color: #ec4899;
+  color: #f472b6;
+  box-shadow: 0 0 12px rgba(236, 72, 153, 0.3);
+}
+
+.member-pill.active[data-sms-member="son"] {
+  background: rgba(16, 185, 129, 0.18);
+  border-color: #10b981;
+  color: #34d399;
+  box-shadow: 0 0 12px rgba(16, 185, 129, 0.3);
+}
+
+
 

@@ -1678,6 +1678,420 @@
     if (fileInput) fileInput.value = '';
   }
 
+  // ==========================================================================
+  // SMS SYNC / BANK ALERT PARSER (Option 3: Smart Clipboard & Text Parser)
+  // ==========================================================================
+
+  let parsedSMSTransactions = [];
+  let currentSMSIndex = 0;
+  let smsSelectedMember = 'dad';
+
+  // Category Keyword Dictionary for Auto-Detection
+  const SMS_CATEGORY_KEYWORDS = {
+    'groceries': ['panda', 'hypermarket', 'supermarket', 'lulu', 'carrefour', 'tamimi', 'alraya', 'raya', 'othaim', 'danube', 'manuel', 'farm', 'baqala', 'grocery', 'food', 'market', 'بنده', 'لولو', 'كارفور', 'التميمي', 'العثيم', 'الدانوب', 'ماركت', 'بقالة', 'أسواق'],
+    'petrol': ['petrol', 'fuel', 'gas', 'naft', 'aldrees', 'sasco', 'shell', 'aramco', 'oil', 'station', 'بنزين', 'ساسكو', 'الدريس', 'نفط', 'محطة', 'وقود', 'شل'],
+    'bills': ['stc', 'mobily', 'zain', 'salam', 'sec', 'electricity', 'water', 'telecom', 'bill', 'electric', 'jawwy', 'redbull', 'فاتورة', 'كهرباء', 'مياه', 'اتصالات', 'موبايلي', 'زين'],
+    'medicine': ['nahdi', 'dawaa', 'pharmacy', 'medical', 'hospital', 'clinic', 'health', 'doctor', 'pharma', 'dr', 'صيدلية', 'النهدي', 'الدواء', 'مستشفى', 'عيادة', 'طبيب', 'علاج', 'أدوية'],
+    'school': ['school', 'university', 'college', 'tuition', 'academy', 'nursery', 'kindergarten', 'books', 'jarir', 'stationery', 'education', 'مدرسة', 'جامعة', 'تعليم', 'روضة', 'جرير', 'مكتبة', 'كتب', 'أقساط دراسية'],
+    'services': ['careem', 'uber', 'repair', 'maintenance', 'laundry', 'carwash', 'delivery', 'jahez', 'hungerstation', 'ninja', 'toyou', 'mrsool', 'barber', 'salon', 'clean', 'صيانة', 'مغسلة', 'توصيل', 'جاهز', 'هنقرستيشن', 'مرسول', 'أوبر', 'كريم', 'خدمات'],
+    'car-installment': ['installment', 'auto', 'leasing', 'lease', 'toyota', 'alj', 'hyundai', 'yaris', 'camry', 'car installment', 'قسط', 'تمويل', 'تأجير', 'تويوتا', 'الوعلان', 'الجميح', 'قسط سيارة'],
+    'pakistan': ['pakistan', 'remittance', 'moneygram', 'western union', 'tahweel', 'alrajhi remittance', 'telemoney', 'enjaz', 'باكستان', 'تحويل', 'إنجاز', 'تلي موني'],
+    'jeddah-groceries': ['jeddah groceries', 'jeddah food', 'جدة'],
+    'kids': ['toys', 'babyshop', 'mothercare', 'kids', 'children', 'toy', 'play', 'centerpoint', 'ألعاب', 'أطفال', 'مذركير', 'سنتربوينت'],
+    'maria': ['maria', 'ماري'],
+    'iqama': ['iqama', 'jawazat', 'absher', 'moi', 'visa', 'residence', 'إقامة', 'جوازات', 'أبشر', 'تأشيرة', 'مكتب عمل'],
+    'rent': ['rent', 'ejar', 'real estate', 'aqar', 'apartment', 'housing', 'إيجار', 'عقار', 'شقة', 'سكن']
+  };
+
+  function guessCategoryFromText(text) {
+    if (!text) return 'others';
+    const low = text.toLowerCase();
+    for (const [catId, keywords] of Object.entries(SMS_CATEGORY_KEYWORDS)) {
+      if (keywords.some(kw => low.includes(kw.toLowerCase()))) {
+        return catId;
+      }
+    }
+    return 'others';
+  }
+
+  function parseSingleBankSMS(rawText) {
+    if (!rawText || typeof rawText !== 'string') return null;
+    const text = rawText.trim();
+    if (text.length < 5) return null;
+
+    // 1. Amount Extraction (Avoid matching "Balance: SAR 1234")
+    let textForAmount = text.replace(/(?:balance|avail|available|الرصيد|رصيد)\s*(?:is|:)?\s*(?:SAR|SR|AED|USD|\$|ر\.س|ريال)?\s*[0-9,.]+/gi, '');
+
+    let detectedAmount = 0;
+    const amtMatchA = textForAmount.match(/(?:SAR|SR|AED|USD|\$|ر\.س|ريال|Rs|PKR)\s*([0-9]+(?:[.,][0-9]{1,2})?)/i);
+    const amtMatchB = textForAmount.match(/([0-9]+(?:[.,][0-9]{1,2})?)\s*(?:SAR|SR|AED|USD|\$|ر\.س|ريال|Rs|PKR)/i);
+    const amtMatchC = textForAmount.match(/(?:purchase of|debit of|payment of|spent|amount|بمبلغ|خصم|شراء)\s*(?:SAR|SR|\$|ر\.س|ريال)?\s*([0-9]+(?:[.,][0-9]{1,2})?)/i);
+
+    if (amtMatchA) {
+      detectedAmount = parseFloat(amtMatchA[1].replace(/,/g, ''));
+    } else if (amtMatchB) {
+      detectedAmount = parseFloat(amtMatchB[1].replace(/,/g, ''));
+    } else if (amtMatchC) {
+      detectedAmount = parseFloat(amtMatchC[1].replace(/,/g, ''));
+    } else {
+      const numMatch = textForAmount.match(/\b([0-9]+\.[0-9]{2})\b/);
+      if (numMatch) detectedAmount = parseFloat(numMatch[1]);
+    }
+
+    if (!detectedAmount || isNaN(detectedAmount) || detectedAmount <= 0) {
+      return null;
+    }
+
+    // 2. Date Extraction
+    let detectedDate = formatDateYMD(new Date());
+    const dateMatchYMD = text.match(/\b(202[0-9])[-/.](\d{1,2})[-/.](\d{1,2})\b/);
+    const dateMatchDMY = text.match(/\b(\d{1,2})[-/.](\d{1,2})[-/.](202[0-9])\b/);
+    const dateMatchDMYY = text.match(/\b(\d{1,2})[-/.](\d{1,2})[-/.](2[0-9])\b/);
+    const dateMatchText = text.match(/\b(\d{1,2})\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s*(202[0-9])?\b/i);
+
+    if (dateMatchYMD) {
+      const y = dateMatchYMD[1];
+      const m = String(dateMatchYMD[2]).padStart(2, '0');
+      const d = String(dateMatchYMD[3]).padStart(2, '0');
+      detectedDate = `${y}-${m}-${d}`;
+    } else if (dateMatchDMY) {
+      const d = String(dateMatchDMY[1]).padStart(2, '0');
+      const m = String(dateMatchDMY[2]).padStart(2, '0');
+      const y = dateMatchDMY[3];
+      detectedDate = `${y}-${m}-${d}`;
+    } else if (dateMatchDMYY) {
+      const d = String(dateMatchDMYY[1]).padStart(2, '0');
+      const m = String(dateMatchDMYY[2]).padStart(2, '0');
+      const y = '20' + dateMatchDMYY[3];
+      detectedDate = `${y}-${m}-${d}`;
+    } else if (dateMatchText) {
+      const monthNames = { jan: '01', feb: '02', mar: '03', apr: '04', may: '05', jun: '06', jul: '07', aug: '08', sep: '09', oct: '10', nov: '11', dec: '12' };
+      const m = monthNames[dateMatchText[2].substr(0, 3).toLowerCase()] || '01';
+      const d = String(dateMatchText[1]).padStart(2, '0');
+      const y = dateMatchText[3] || new Date().getFullYear();
+      detectedDate = `${y}-${m}-${d}`;
+    }
+
+    // 3. Time Extraction
+    let detectedTime = formatTimeHMS(new Date());
+    const timeMatch = text.match(/\b(\d{1,2}):(\d{2})(?::(\d{2}))?\s*(am|pm)?\b/i);
+    if (timeMatch) {
+      let hh = parseInt(timeMatch[1], 10);
+      const mm = String(timeMatch[2]).padStart(2, '0');
+      const ss = timeMatch[3] ? String(timeMatch[3]).padStart(2, '0') : '00';
+      const ampm = timeMatch[4] ? timeMatch[4].toLowerCase() : null;
+
+      if (ampm === 'pm' && hh < 12) hh += 12;
+      if (ampm === 'am' && hh === 12) hh = 0;
+      detectedTime = `${String(hh).padStart(2, '0')}:${mm}:${ss}`;
+    }
+
+    // 4. Merchant / Store Extraction
+    let detectedMerchant = '';
+    const merchantPatterns = [
+      /(?:at|to|in|لدى|عبر|merchant:?|pos:?)\s+([A-Za-z0-9\u0600-\u06FF\s&'-]{2,40}?)(?=\s+(?:on|with|card|via|dated|date|balance|available|رصيد|في|بواسطة|\.|\n|$))/i,
+      /(?:at|to|لدى)\s+([A-Za-z0-9\u0600-\u06FF\s&'-]{2,30})/i
+    ];
+
+    for (const pat of merchantPatterns) {
+      const m = text.match(pat);
+      if (m && m[1]) {
+        let clean = m[1].trim()
+          .replace(/^(mada|apple pay|card ending in \d+|visa|mastercard)\s*/i, '')
+          .replace(/[.,;:]+$/, '')
+          .trim();
+        if (clean.length > 1 && !clean.toLowerCase().includes('balance')) {
+          detectedMerchant = clean;
+          break;
+        }
+      }
+    }
+
+    if (!detectedMerchant) {
+      detectedMerchant = 'Bank SMS Purchase';
+    }
+
+    // 5. Smart Category Guessing
+    const guessedCatId = guessCategoryFromText(detectedMerchant + ' ' + text);
+    const catObj = CATEGORIES.find(c => c.id === guessedCatId) || CATEGORIES[0];
+
+    return {
+      amount: Math.round(detectedAmount * 100) / 100,
+      date: detectedDate,
+      time: detectedTime,
+      merchant: detectedMerchant,
+      categoryId: catObj.id,
+      categoryName: catObj.name,
+      spentBy: deviceProfile || 'dad',
+      rawText: text
+    };
+  }
+
+  function parseBankSMSText(fullText) {
+    if (!fullText) return [];
+    // Split by newlines or action phrases if multiple SMS messages are pasted
+    const chunks = fullText.split(/\n{2,}|(?=Purchase of|Debit of|Payment of|خصم بمبلغ|شراء بمبلغ)/gi);
+    const results = [];
+
+    chunks.forEach(chunk => {
+      const parsed = parseSingleBankSMS(chunk);
+      if (parsed) results.push(parsed);
+    });
+
+    if (results.length === 0) {
+      const single = parseSingleBankSMS(fullText);
+      if (single) results.push(single);
+    }
+
+    return results;
+  }
+
+  // --- SMS Sync Modal Handlers ---
+  async function openSMSModal() {
+    const modal = document.getElementById('sms-sync-modal');
+    const input = document.getElementById('sms-text-input');
+    const catSelect = document.getElementById('sms-parsed-category');
+    if (!modal) return;
+
+    smsSelectedMember = deviceProfile || 'dad';
+    parsedSMSTransactions = [];
+    currentSMSIndex = 0;
+
+    // Populate category dropdown
+    if (catSelect) {
+      catSelect.innerHTML = CATEGORIES.map(c => `
+        <option value="${c.id}">${escapeHTML(c.name)}</option>
+      `).join('');
+    }
+
+    updateSMSMemberSelectorUI();
+
+    // Reset review card
+    document.getElementById('sms-review-card').style.display = 'none';
+    document.getElementById('sms-multi-nav').style.display = 'none';
+    document.getElementById('sms-modal-save-btn').disabled = true;
+    document.getElementById('sms-detected-badge').textContent = 'Ready';
+    document.getElementById('sms-detected-badge').style.color = 'var(--text-muted)';
+    if (input) input.value = '';
+
+    modal.classList.add('active');
+
+    // Auto-read clipboard if possible
+    try {
+      if (navigator.clipboard && navigator.clipboard.readText) {
+        const text = await navigator.clipboard.readText();
+        if (text && text.trim().length > 6) {
+          // Check if looks like transaction / bank SMS
+          if (/SAR|SR|AED|USD|\$|mada|purchase|debit|payment|ر\.س|ريال|خصم|شراء/i.test(text)) {
+            input.value = text.trim();
+            handleSMSInput(text.trim());
+            showToast('📋 Auto-pasted bank SMS from clipboard!');
+          }
+        }
+      }
+    } catch (e) {
+      // Clipboard read not permitted without user gesture, user can tap Paste button
+    }
+
+    if (input && !input.value) {
+      setTimeout(() => input.focus(), 150);
+    }
+  }
+
+  function closeSMSModal() {
+    parsedSMSTransactions = [];
+    currentSMSIndex = 0;
+    const modal = document.getElementById('sms-sync-modal');
+    if (modal) modal.classList.remove('active');
+    const input = document.getElementById('sms-text-input');
+    if (input) input.value = '';
+  }
+
+  async function pasteFromClipboardToSMSInput() {
+    triggerHaptic();
+    const input = document.getElementById('sms-text-input');
+    if (!input) return;
+
+    try {
+      if (navigator.clipboard && navigator.clipboard.readText) {
+        const text = await navigator.clipboard.readText();
+        if (text && text.trim()) {
+          input.value = text.trim();
+          handleSMSInput(text.trim());
+          showToast('📋 Pasted from clipboard!');
+          return;
+        }
+      }
+    } catch (err) {
+      console.warn('Clipboard read error:', err);
+    }
+
+    // Fallback: prompt user to paste
+    input.focus();
+    input.select();
+    showToast('Please press and hold in the box to Paste');
+  }
+
+  function handleSMSInput(text) {
+    const reviewCard = document.getElementById('sms-review-card');
+    const badge = document.getElementById('sms-detected-badge');
+    const saveBtn = document.getElementById('sms-modal-save-btn');
+    const multiNav = document.getElementById('sms-multi-nav');
+
+    if (!text || text.trim().length < 5) {
+      if (reviewCard) reviewCard.style.display = 'none';
+      if (multiNav) multiNav.style.display = 'none';
+      if (badge) {
+        badge.textContent = 'Ready';
+        badge.style.color = 'var(--text-muted)';
+      }
+      if (saveBtn) saveBtn.disabled = true;
+      parsedSMSTransactions = [];
+      return;
+    }
+
+    parsedSMSTransactions = parseBankSMSText(text);
+    currentSMSIndex = 0;
+
+    if (parsedSMSTransactions.length === 0) {
+      if (reviewCard) reviewCard.style.display = 'none';
+      if (multiNav) multiNav.style.display = 'none';
+      if (badge) {
+        badge.textContent = 'No transaction found';
+        badge.style.color = 'var(--accent-red)';
+      }
+      if (saveBtn) saveBtn.disabled = true;
+      return;
+    }
+
+    // Show Extracted transaction
+    renderCurrentParsedSMS();
+  }
+
+  function renderCurrentParsedSMS() {
+    if (!parsedSMSTransactions || parsedSMSTransactions.length === 0) return;
+    const item = parsedSMSTransactions[currentSMSIndex];
+    if (!item) return;
+
+    const reviewCard = document.getElementById('sms-review-card');
+    const badge = document.getElementById('sms-detected-badge');
+    const saveBtn = document.getElementById('sms-modal-save-btn');
+    const multiNav = document.getElementById('sms-multi-nav');
+    const counterEl = document.getElementById('sms-multi-counter');
+
+    const amtInput = document.getElementById('sms-parsed-amount');
+    const catSelect = document.getElementById('sms-parsed-category');
+    const dateInput = document.getElementById('sms-parsed-date');
+    const timeInput = document.getElementById('sms-parsed-time');
+    const notesInput = document.getElementById('sms-parsed-notes');
+    const catHint = document.getElementById('sms-auto-cat-hint');
+
+    if (amtInput) amtInput.value = item.amount;
+    if (catSelect) catSelect.value = item.categoryId;
+    if (dateInput) dateInput.value = item.date;
+    if (timeInput) timeInput.value = item.time.substr(0, 5);
+    if (notesInput) notesInput.value = item.merchant;
+    if (catHint) catHint.textContent = `Auto-detected (${item.categoryName})`;
+
+    smsSelectedMember = item.spentBy || deviceProfile || 'dad';
+    updateSMSMemberSelectorUI();
+
+    if (reviewCard) reviewCard.style.display = 'block';
+    if (saveBtn) {
+      saveBtn.disabled = false;
+      saveBtn.textContent = parsedSMSTransactions.length > 1 
+        ? `Save (${currentSMSIndex + 1} of ${parsedSMSTransactions.length})` 
+        : 'Save Expenditure';
+    }
+
+    if (badge) {
+      badge.textContent = `${parsedSMSTransactions.length} Detected`;
+      badge.style.color = 'var(--accent-green)';
+    }
+
+    if (multiNav) {
+      multiNav.style.display = parsedSMSTransactions.length > 1 ? 'flex' : 'none';
+      if (counterEl) {
+        counterEl.textContent = `Transaction ${currentSMSIndex + 1} of ${parsedSMSTransactions.length}`;
+      }
+    }
+  }
+
+  function updateSMSMemberSelectorUI() {
+    document.querySelectorAll('#sms-parsed-member-selector .member-pill').forEach(btn => {
+      btn.classList.toggle('active', btn.getAttribute('data-sms-member') === smsSelectedMember);
+    });
+  }
+
+  function saveSMSParsedTransaction() {
+    const amtInput = document.getElementById('sms-parsed-amount');
+    const catSelect = document.getElementById('sms-parsed-category');
+    const dateInput = document.getElementById('sms-parsed-date');
+    const timeInput = document.getElementById('sms-parsed-time');
+    const notesInput = document.getElementById('sms-parsed-notes');
+
+    const amount = parseFloat(amtInput?.value);
+    if (!amount || isNaN(amount) || amount <= 0) {
+      showToast('⚠️ Please enter a valid amount');
+      amtInput?.focus();
+      return;
+    }
+
+    const catObj = CATEGORIES.find(c => c.id === catSelect?.value) || CATEGORIES[0];
+    const memInfo = getMemberInfo(smsSelectedMember);
+    const dVal = dateInput?.value || formatDateYMD(new Date());
+    const tVal = timeInput?.value ? (timeInput.value.length === 5 ? timeInput.value + ':00' : timeInput.value) : formatTimeHMS(new Date());
+
+    const dtObj = new Date(`${dVal}T${tVal}`);
+    const timestamp = isNaN(dtObj.getTime()) ? Date.now() : dtObj.getTime();
+
+    // Calculate spend before adding
+    const now = new Date();
+    const currentMonthPrefix = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    const oldSpent = transactions
+      .filter(t => t.categoryId === catObj.id && t.date && t.date.startsWith(currentMonthPrefix))
+      .reduce((sum, t) => sum + t.amount, 0);
+
+    const newTransaction = {
+      id: 'tx_sms_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
+      amount: Math.round(amount * 100) / 100,
+      currency: settings.currency,
+      categoryId: catObj.id,
+      categoryName: catObj.name,
+      spentBy: memInfo.id,
+      spentByName: memInfo.name,
+      spentByAvatar: memInfo.avatar,
+      notes: notesInput ? notesInput.value.trim() : '',
+      date: dVal,
+      time: tVal,
+      timestamp: timestamp
+    };
+
+    transactions.unshift(newTransaction);
+    saveTransactions();
+
+    if (db) {
+      uploadTransactionToCloud(newTransaction);
+    }
+
+    if (newTransaction.date && newTransaction.date.startsWith(currentMonthPrefix)) {
+      const newSpent = oldSpent + newTransaction.amount;
+      checkBudgetThresholds(catObj.id, oldSpent, newSpent);
+    }
+
+    triggerHaptic();
+    showToast(`✅ ${memInfo.avatar} Added ${settings.currency} ${formatNumber(newTransaction.amount)} in ${catObj.name} from SMS!`, true, newTransaction.id);
+
+    // If there are more transactions in the multi-SMS queue
+    if (parsedSMSTransactions.length > currentSMSIndex + 1) {
+      currentSMSIndex++;
+      renderCurrentParsedSMS();
+    } else {
+      closeSMSModal();
+      switchTab('tab-history');
+    }
+  }
+
   // --- Delete & Undo ---
   function deleteTransaction(txId) {
     const idx = transactions.findIndex(t => t.id === txId);
@@ -2589,6 +3003,48 @@
     document.getElementById('import-csv-cancel-btn')?.addEventListener('click', closeImportCSVModal);
     document.getElementById('import-csv-modal')?.addEventListener('click', (e) => {
       if (e.target.id === 'import-csv-modal') closeImportCSVModal();
+    });
+
+    // SMS Sync Events
+    document.getElementById('btn-open-sms-sync')?.addEventListener('click', openSMSModal);
+    document.getElementById('sms-paste-clipboard-btn')?.addEventListener('click', pasteFromClipboardToSMSInput);
+    document.getElementById('sms-clear-btn')?.addEventListener('click', () => {
+      const input = document.getElementById('sms-text-input');
+      if (input) {
+        input.value = '';
+        input.focus();
+      }
+      handleSMSInput('');
+    });
+    document.getElementById('sms-text-input')?.addEventListener('input', (e) => {
+      handleSMSInput(e.target.value);
+    });
+    document.getElementById('sms-parsed-member-selector')?.addEventListener('click', (e) => {
+      const pill = e.target.closest('.member-pill');
+      if (pill) {
+        smsSelectedMember = pill.getAttribute('data-sms-member') || 'dad';
+        updateSMSMemberSelectorUI();
+        triggerHaptic();
+      }
+    });
+    document.getElementById('sms-multi-prev')?.addEventListener('click', () => {
+      if (currentSMSIndex > 0) {
+        currentSMSIndex--;
+        renderCurrentParsedSMS();
+        triggerHaptic();
+      }
+    });
+    document.getElementById('sms-multi-next')?.addEventListener('click', () => {
+      if (parsedSMSTransactions && currentSMSIndex < parsedSMSTransactions.length - 1) {
+        currentSMSIndex++;
+        renderCurrentParsedSMS();
+        triggerHaptic();
+      }
+    });
+    document.getElementById('sms-modal-save-btn')?.addEventListener('click', saveSMSParsedTransaction);
+    document.getElementById('sms-modal-cancel-btn')?.addEventListener('click', closeSMSModal);
+    document.getElementById('sms-sync-modal')?.addEventListener('click', (e) => {
+      if (e.target.id === 'sms-sync-modal') closeSMSModal();
     });
 
     // Budget Manager Events

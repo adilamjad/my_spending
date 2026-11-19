@@ -60,6 +60,18 @@
       <section id="tab-add" class="tab-content active" aria-label="Add Expense">
         <form id="expense-form" autocomplete="off">
           
+          <!-- SMS Sync Quick Action Button -->
+          <div class="sms-sync-bar">
+            <button type="button" class="btn-sms-sync" id="btn-open-sms-sync" title="Sync expenditure from bank SMS notification">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18">
+                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+                <polyline points="9 11 12 14 22 4"/>
+              </svg>
+              <span>Sync with SMS (Bank Alert)</span>
+              <span class="sms-sync-badge">Auto</span>
+            </button>
+          </div>
+
           <!-- Amount Hero Card -->
           <div class="amount-hero-card">
             <div class="amount-label">Expenditure Amount</div>
@@ -770,6 +782,111 @@
           <button type="button" class="btn-secondary" id="import-csv-cancel-btn">Cancel</button>
           <button type="button" class="btn-import" id="import-csv-confirm-btn" style="flex: 1; padding: 12px;">
             Confirm Import
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- SMS Sync / Bank Alert Parser Modal Sheet -->
+    <div id="sms-sync-modal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="modal-sms-title">
+      <div class="modal-sheet" style="max-height: 90vh; display: flex; flex-direction: column;">
+        <div class="modal-handle"></div>
+        <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 4px;">
+          <h3 id="modal-sms-title" class="modal-title">Sync with SMS</h3>
+          <span style="font-size: 0.78rem; font-weight: 700; color: var(--primary);" id="sms-detected-badge">Ready</span>
+        </div>
+        <p class="modal-desc" style="margin-bottom: 12px;">
+          Paste your bank SMS alert or tap <b>"Paste"</b>. The app automatically extracts the amount, date, time &amp; merchant.
+        </p>
+
+        <!-- Input Box & Paste from Clipboard -->
+        <div class="sms-input-wrapper" style="margin-bottom: 14px;">
+          <div style="position: relative;">
+            <textarea id="sms-text-input" 
+                      class="text-input" 
+                      rows="3" 
+                      placeholder="Paste bank SMS here (e.g. Purchase of SAR 145.50 at PANDA on 19/11/2026 14:32...)" 
+                      style="width: 100%; resize: none; font-size: 0.85rem; padding-right: 90px;"></textarea>
+            <button type="button" class="sms-paste-btn" id="sms-paste-clipboard-btn">
+              📋 Paste
+            </button>
+          </div>
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 4px;">
+            <span style="font-size: 0.72rem; color: var(--text-muted);">Supports Al Rajhi, SNB, Riyad, STC Pay, mada &amp; GCC banks</span>
+            <button type="button" id="sms-clear-btn" style="background: none; border: none; font-size: 0.72rem; color: var(--text-muted); cursor: pointer; text-decoration: underline;">Clear</button>
+          </div>
+        </div>
+
+        <!-- Parsed Transaction Review Form -->
+        <div class="sms-review-card" id="sms-review-card" style="display: none; background: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 14px; margin-bottom: 14px; overflow-y: auto; max-height: 48vh;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+            <span style="font-size: 0.76rem; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em;">
+              Extracted Transaction
+            </span>
+            <span class="sms-parsed-confidence" id="sms-parsed-confidence">✅ Extracted</span>
+          </div>
+
+          <!-- Amount -->
+          <div class="form-group" style="margin-bottom: 10px;">
+            <label class="form-label">Amount</label>
+            <div class="input-field-wrapper">
+              <span class="currency-symbol" style="margin-right: 6px;">SAR</span>
+              <input type="number" id="sms-parsed-amount" class="text-input" step="any" required>
+            </div>
+          </div>
+
+          <!-- Category Selection -->
+          <div class="form-group" style="margin-bottom: 10px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+              <label for="sms-parsed-category" class="form-label" style="margin: 0;">Category</label>
+              <span id="sms-auto-cat-hint" style="font-size: 0.72rem; color: var(--accent-green); font-weight: 600;">Auto-detected</span>
+            </div>
+            <select id="sms-parsed-category" class="custom-select" style="width: 100%;">
+              <!-- Dynamic Category Options -->
+            </select>
+          </div>
+
+          <!-- Spent By Selection -->
+          <div class="form-group" style="margin-bottom: 10px;">
+            <label class="form-label">Spent By</label>
+            <div class="member-selector-row" id="sms-parsed-member-selector">
+              <button type="button" class="member-pill active" data-sms-member="dad">👨 Dad</button>
+              <button type="button" class="member-pill" data-sms-member="mom">👩 Mom</button>
+              <button type="button" class="member-pill" data-sms-member="son">👦 Son</button>
+            </div>
+          </div>
+
+          <!-- Date & Time -->
+          <div class="form-group" style="margin-bottom: 10px;">
+            <label class="form-label">Date &amp; Time (from SMS)</label>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+              <input type="date" id="sms-parsed-date" class="datetime-input">
+              <input type="time" id="sms-parsed-time" class="datetime-input">
+            </div>
+          </div>
+
+          <!-- Notes -->
+          <div class="form-group">
+            <label for="sms-parsed-notes" class="form-label">Notes / Merchant</label>
+            <div class="input-field-wrapper">
+              <input type="text" id="sms-parsed-notes" class="text-input" placeholder="Merchant name or details">
+            </div>
+          </div>
+        </div>
+
+        <!-- Multi-SMS Navigation (if user pastes multiple SMS messages) -->
+        <div id="sms-multi-nav" style="display: none; align-items: center; justify-content: space-between; margin-bottom: 10px; font-size: 0.8rem; color: var(--text-secondary);">
+          <span id="sms-multi-counter">Transaction 1 of 1</span>
+          <div style="display: flex; gap: 6px;">
+            <button type="button" class="chip-btn" id="sms-multi-prev" style="padding: 4px 8px;">&larr; Prev</button>
+            <button type="button" class="chip-btn" id="sms-multi-next" style="padding: 4px 8px;">Next &rarr;</button>
+          </div>
+        </div>
+
+        <div class="modal-actions" style="margin-top: auto; padding-top: 8px;">
+          <button type="button" class="btn-secondary" id="sms-modal-cancel-btn">Cancel</button>
+          <button type="button" class="btn-import" id="sms-modal-save-btn" style="flex: 1; padding: 12px;" disabled>
+            Save Expenditure
           </button>
         </div>
       </div>
