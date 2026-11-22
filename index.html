@@ -68,7 +68,7 @@
                 <polyline points="9 11 12 14 22 4"/>
               </svg>
               <span>Sync with SMS (Bank Alert)</span>
-              <span class="sms-sync-badge">Auto</span>
+              <span class="sms-sync-badge" id="sms-sync-badge">Auto</span>
             </button>
           </div>
 
@@ -789,23 +789,54 @@
 
     <!-- SMS Sync / Bank Alert Parser Modal Sheet -->
     <div id="sms-sync-modal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="modal-sms-title">
-      <div class="modal-sheet" style="max-height: 90vh; display: flex; flex-direction: column;">
+      <div class="modal-sheet" style="max-height: 92vh; display: flex; flex-direction: column;">
         <div class="modal-handle"></div>
-        <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 4px;">
+        <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 8px;">
           <h3 id="modal-sms-title" class="modal-title">Sync with SMS</h3>
           <span style="font-size: 0.78rem; font-weight: 700; color: var(--primary);" id="sms-detected-badge">Ready</span>
         </div>
-        <p class="modal-desc" style="margin-bottom: 12px;">
-          Paste your bank SMS alert or tap <b>"Paste"</b>. The app automatically extracts the amount, date, time &amp; merchant.
-        </p>
 
-        <!-- Input Box & Paste from Clipboard -->
-        <div class="sms-input-wrapper" style="margin-bottom: 14px;">
+        <!-- Mode Tabs: Cloud Automation Queue vs Paste / Manual vs Setup -->
+        <div class="sms-source-tabs" style="margin-bottom: 12px;">
+          <button type="button" class="sms-source-tab-btn active" id="sms-tab-cloud-btn">
+            <span>☁️ Cloud Queue</span>
+            <span class="sms-sync-badge" id="sms-tab-cloud-badge" style="font-size: 0.62rem; display: none;">0</span>
+          </button>
+          <button type="button" class="sms-source-tab-btn" id="sms-tab-manual-btn">
+            <span>📋 Paste / Manual</span>
+          </button>
+          <button type="button" class="sms-source-tab-btn" id="sms-tab-guide-btn" style="flex: 0 0 auto; padding: 6px 10px;" title="MacroDroid Automation Setup Guide">
+            <span>⚙️ Setup</span>
+          </button>
+        </div>
+
+        <!-- 1. Cloud Empty State (When Cloud Tab is Active but queue is 0) -->
+        <div id="sms-cloud-empty-view" style="display: none; text-align: center; padding: 24px 16px; background: var(--bg-card); border: 1px dashed var(--border-color); border-radius: var(--radius-md); margin-bottom: 14px;">
+          <div style="font-size: 2rem; margin-bottom: 8px;">☁️</div>
+          <h4 style="font-size: 0.95rem; font-weight: 700; color: var(--text-primary); margin-bottom: 4px;">Cloud SMS Queue is Empty</h4>
+          <p style="font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 14px; line-height: 1.4;">
+            When your bank sends an SMS alert, your Android phone (via MacroDroid) automatically sends it here.
+          </p>
+          <div style="display: flex; flex-direction: column; gap: 8px; max-width: 280px; margin: 0 auto;">
+            <button type="button" class="btn-primary" id="sms-btn-open-guide-from-empty" style="padding: 10px; font-size: 0.82rem;">
+              ⚙️ View Android Setup Guide
+            </button>
+            <button type="button" class="btn-secondary" id="sms-btn-send-test-cloud" style="padding: 10px; font-size: 0.82rem;">
+              🧪 Send Sample SMS to Cloud
+            </button>
+            <button type="button" id="sms-btn-switch-to-paste" style="background: none; border: none; font-size: 0.78rem; color: var(--primary-light); cursor: pointer; text-decoration: underline; margin-top: 4px;">
+              Or paste an SMS manually &rarr;
+            </button>
+          </div>
+        </div>
+
+        <!-- 2. Manual Paste Container -->
+        <div id="sms-manual-paste-view" class="sms-input-wrapper" style="margin-bottom: 14px; display: none;">
           <div style="position: relative;">
             <textarea id="sms-text-input" 
                       class="text-input" 
                       rows="3" 
-                      placeholder="Paste bank SMS here (e.g. Purchase of SAR 145.50 at PANDA on 19/11/2026 14:32...)" 
+                      placeholder="Paste bank SMS here (e.g. POS Purchase Amount: SAR 8.00 From: HALA TRADI On: 2026-11-21 23:56...)" 
                       style="width: 100%; resize: none; font-size: 0.85rem; padding-right: 90px;"></textarea>
             <button type="button" class="sms-paste-btn" id="sms-paste-clipboard-btn">
               📋 Paste
@@ -817,12 +848,17 @@
           </div>
         </div>
 
-        <!-- Parsed Transaction Review Form -->
+        <!-- 3. Parsed Transaction Review Form -->
         <div class="sms-review-card" id="sms-review-card" style="display: none; background: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 14px; margin-bottom: 14px; overflow-y: auto; max-height: 48vh;">
           <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
-            <span style="font-size: 0.76rem; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em;">
-              Extracted Transaction
-            </span>
+            <div style="display: flex; align-items: center; gap: 6px;">
+              <span style="font-size: 0.76rem; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em;">
+                Extracted Transaction
+              </span>
+              <span id="sms-cloud-sender-badge" style="display: none; font-size: 0.7rem; font-weight: 600; padding: 1px 6px; border-radius: 4px; background: rgba(59, 130, 246, 0.15); color: #60a5fa;">
+                📱 Cloud SMS
+              </span>
+            </div>
             <span class="sms-parsed-confidence" id="sms-parsed-confidence">✅ Extracted</span>
           </div>
 
@@ -874,7 +910,7 @@
           </div>
         </div>
 
-        <!-- Multi-SMS Navigation (if user pastes multiple SMS messages) -->
+        <!-- Multi-SMS Navigation (Queue 1 of N) -->
         <div id="sms-multi-nav" style="display: none; align-items: center; justify-content: space-between; margin-bottom: 10px; font-size: 0.8rem; color: var(--text-secondary);">
           <span id="sms-multi-counter">Transaction 1 of 1</span>
           <div style="display: flex; gap: 6px;">
@@ -883,10 +919,102 @@
           </div>
         </div>
 
+        <!-- Modal Actions -->
         <div class="modal-actions" style="margin-top: auto; padding-top: 8px;">
-          <button type="button" class="btn-secondary" id="sms-modal-cancel-btn">Cancel</button>
+          <button type="button" class="btn-secondary" id="sms-modal-cancel-btn">Close</button>
+          <button type="button" class="btn-sms-skip" id="sms-modal-skip-btn" style="display: none;">
+            🗑️ Skip
+          </button>
           <button type="button" class="btn-import" id="sms-modal-save-btn" style="flex: 1; padding: 12px;" disabled>
             Save Expenditure
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- MacroDroid Android Automation Setup Guide Modal -->
+    <div id="macrodroid-setup-modal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="modal-macrodroid-title">
+      <div class="modal-sheet" style="max-height: 92vh; overflow-y: auto;">
+        <div class="modal-handle"></div>
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+          <h3 id="modal-macrodroid-title" class="modal-title">⚙️ Android Automation Setup</h3>
+          <button type="button" id="macrodroid-close-x-btn" style="background: none; border: none; font-size: 1.2rem; color: var(--text-muted); cursor: pointer;">&times;</button>
+        </div>
+        <p class="modal-desc" style="margin-bottom: 14px;">
+          Connect your Android phone using <b>MacroDroid</b> so bank SMS alerts automatically sync into this app.
+        </p>
+
+        <!-- Step 1 -->
+        <div style="background: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 12px; margin-bottom: 12px;">
+          <div style="font-weight: 700; font-size: 0.88rem; color: var(--text-primary); margin-bottom: 4px;">
+            1. Install MacroDroid (Free)
+          </div>
+          <p style="font-size: 0.8rem; color: var(--text-secondary); line-height: 1.4;">
+            Download <b>MacroDroid - Device Automation</b> from the Google Play Store on your Android phone.
+          </p>
+        </div>
+
+        <!-- Step 2 -->
+        <div style="background: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 12px; margin-bottom: 12px;">
+          <div style="font-weight: 700; font-size: 0.88rem; color: var(--text-primary); margin-bottom: 6px;">
+            2. Create a Macro in MacroDroid
+          </div>
+          
+          <div style="font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 8px;">
+            <b style="color: var(--text-primary);">A. Trigger:</b><br>
+            Tap <b>+ Trigger</b> &rarr; <b>Messaging</b> &rarr; <b>SMS Received</b> &rarr; Select sender (e.g., <i>ALRAJHI</i>, <i>SNB</i>, <i>RIYAD</i>, or Any).
+          </div>
+
+          <div style="font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 8px;">
+            <b style="color: var(--text-primary);">B. Action:</b><br>
+            Tap <b>+ Action</b> &rarr; <b>Connectivity</b> &rarr; <b>HTTP Request</b> / <b>Web Request</b>:
+            <ul style="margin: 6px 0 6px 18px; padding: 0;">
+              <li>Request Method: <b>POST</b></li>
+              <li>Content Type: <b>application/json</b></li>
+            </ul>
+          </div>
+
+          <!-- Webhook URL Box -->
+          <label class="form-label" style="font-size: 0.74rem;">URL (Tap Copy):</label>
+          <div class="setup-code-box">
+            <span id="macrodroid-url-text">https://firestore.googleapis.com/v1/projects/spending-tracker-6db2d/databases/(default)/documents/households/family_default/pending_sms?key=AIzaSyCZV_am4fczF_wwHI8XtZKepX7uS8kBLl8</span>
+            <button type="button" class="setup-copy-btn" id="btn-copy-macrodroid-url">Copy URL</button>
+          </div>
+
+          <!-- Body Box -->
+          <label class="form-label" style="font-size: 0.74rem;">Request Body (JSON):</label>
+          <div class="setup-code-box">
+            <span id="macrodroid-body-text">{
+  "fields": {
+    "text": {"stringValue": "{sms_message}"},
+    "sender": {"stringValue": "{sms_number}"},
+    "receivedAt": {"stringValue": "{year}-{month_digit}-{day_digit} {hour_24}:{minute}"},
+    "spentBy": {"stringValue": "dad"}
+  }
+}</span>
+            <button type="button" class="setup-copy-btn" id="btn-copy-macrodroid-body">Copy Body</button>
+          </div>
+          <div style="font-size: 0.72rem; color: var(--text-muted); line-height: 1.4;">
+            💡 <i>Tip: Change <code>"dad"</code> to <code>"mom"</code> or <code>"son"</code> depending on whose phone MacroDroid is installed on!</i>
+          </div>
+        </div>
+
+        <!-- Step 3: Test Connection -->
+        <div style="background: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 12px; margin-bottom: 16px;">
+          <div style="font-weight: 700; font-size: 0.88rem; color: var(--text-primary); margin-bottom: 6px;">
+            3. Test Cloud Queue
+          </div>
+          <p style="font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 10px;">
+            Click below to send a sample bank SMS to your Firestore queue right now:
+          </p>
+          <button type="button" class="btn-primary" id="btn-send-test-sms-cloud" style="width: 100%; padding: 10px;">
+            🧪 Send Test Bank SMS to Cloud
+          </button>
+        </div>
+
+        <div class="modal-actions">
+          <button type="button" class="btn-secondary" id="macrodroid-setup-done-btn" style="width: 100%; padding: 12px;">
+            Done / Close Guide
           </button>
         </div>
       </div>

@@ -207,8 +207,11 @@
   let db = null;
   let firestoreUnsubscribe = null;
   let firestoreBudgetsUnsubscribe = null;
+  let firestorePendingSMSUnsubscribe = null;
   let isSyncingFromCloud = false;
   let cloudSyncStatus = 'offline';
+  let cloudPendingSMS = [];
+  let smsModalActiveTab = 'cloud'; // 'cloud' | 'manual'
 
   let settings = {
     currency: 'SAR',
@@ -490,6 +493,30 @@
     }, (err) => {
       console.warn('Firestore budget snapshot error:', err);
     });
+
+    // 3. Listen for Pending Bank SMS queue from Android Automation (Option 1: MacroDroid / Tasker)
+    const pendingColl = db.collection('households').doc(householdId).collection('pending_sms');
+    firestorePendingSMSUnsubscribe = pendingColl.onSnapshot((snapshot) => {
+      cloudPendingSMS = [];
+      snapshot.forEach((doc) => {
+        const d = doc.data();
+        cloudPendingSMS.push({
+          id: doc.id,
+          text: d.text || '',
+          sender: d.sender || '',
+          receivedAt: d.receivedAt || '',
+          spentBy: d.spentBy || 'dad',
+          createdAt: d.createdAt || 0
+        });
+      });
+      updatePendingSMSBadge();
+      const modal = document.getElementById('sms-sync-modal');
+      if (modal && modal.classList.contains('active') && smsModalActiveTab === 'cloud') {
+        loadCloudPendingSMSToQueue();
+      }
+    }, (err) => {
+      console.warn('Firestore pending_sms snapshot error:', err);
+    });
   }
 
   function uploadTransactionToCloud(tx) {
@@ -534,6 +561,13 @@
     const householdId = settings.householdId || DEFAULT_HOUSEHOLD_ID;
     db.collection('households').doc(householdId).collection('settings').doc('budgets').set(budgets)
       .catch((err) => console.warn('Firestore budget upload error:', err));
+  }
+
+  function deletePendingSMSFromCloud(docId) {
+    if (!db || !docId) return;
+    const householdId = settings.householdId || DEFAULT_HOUSEHOLD_ID;
+    db.collection('households').doc(householdId).collection('pending_sms').doc(docId).delete()
+      .catch((err) => console.warn('Firestore pending_sms delete error:', err));
   }
 
   function uploadAllLocalTransactionsToCloud() {
@@ -1862,10 +1896,124 @@
     return results;
   }
 
-  // --- SMS Sync Modal Handlers ---
+  // --- SMS Sync & Android Cloud Automation Handlers (Option 1 & Option 3) ---
+  function updatePendingSMSBadge() {
+    const mainBadge = document.getElementById('sms-sync-badge');
+    const syncBtn = document.getElementById('btn-open-sms-sync');
+    const cloudTabBadge = document.getElementById('sms-tab-cloud-badge');
+
+    const count = cloudPendingSMS.length;
+    if (mainBadge) {
+      if (count > 0) {
+        mainBadge.textContent = `${count} new`;
+        mainBadge.classList.add('has-pending');
+      } else {
+        mainBadge.textContent = 'Auto';
+        mainBadge.classList.remove('has-pending');
+      }
+    }
+
+    if (syncBtn) {
+      syncBtn.classList.toggle('has-pending-pulse', count > 0);
+    }
+
+    if (cloudTabBadge) {
+      if (count > 0) {
+        cloudTabBadge.textContent = String(count);
+        cloudTabBadge.style.display = 'inline-block';
+      } else {
+        cloudTabBadge.style.display = 'none';
+      }
+    }
+  }
+
+  function setSMSModalTab(tab) {
+    smsModalActiveTab = tab;
+    const cloudBtn = document.getElementById('sms-tab-cloud-btn');
+    const manualBtn = document.getElementById('sms-tab-manual-btn');
+    const cloudEmptyView = document.getElementById('sms-cloud-empty-view');
+    const manualView = document.getElementById('sms-manual-paste-view');
+    const reviewCard = document.getElementById('sms-review-card');
+    const multiNav = document.getElementById('sms-multi-nav');
+    const saveBtn = document.getElementById('sms-modal-save-btn');
+    const skipBtn = document.getElementById('sms-modal-skip-btn');
+    const badge = document.getElementById('sms-detected-badge');
+
+    if (cloudBtn) cloudBtn.classList.toggle('active', tab === 'cloud');
+    if (manualBtn) manualBtn.classList.toggle('active', tab === 'manual');
+
+    if (tab === 'cloud') {
+      if (manualView) manualView.style.display = 'none';
+      loadCloudPendingSMSToQueue();
+    } else {
+      // Manual Paste mode
+      if (cloudEmptyView) cloudEmptyView.style.display = 'none';
+      if (manualView) manualView.style.display = 'block';
+      if (skipBtn) skipBtn.style.display = 'none';
+      const input = document.getElementById('sms-text-input');
+      if (input && input.value && input.value.trim().length >= 5) {
+        handleSMSInput(input.value);
+      } else {
+        if (reviewCard) reviewCard.style.display = 'none';
+        if (multiNav) multiNav.style.display = 'none';
+        if (saveBtn) saveBtn.disabled = true;
+        if (badge) {
+          badge.textContent = 'Ready';
+          badge.style.color = 'var(--text-muted)';
+        }
+      }
+    }
+  }
+
+  function loadCloudPendingSMSToQueue() {
+    const cloudEmptyView = document.getElementById('sms-cloud-empty-view');
+    const reviewCard = document.getElementById('sms-review-card');
+    const multiNav = document.getElementById('sms-multi-nav');
+    const saveBtn = document.getElementById('sms-modal-save-btn');
+    const skipBtn = document.getElementById('sms-modal-skip-btn');
+    const badge = document.getElementById('sms-detected-badge');
+
+    if (!cloudPendingSMS || cloudPendingSMS.length === 0) {
+      if (cloudEmptyView) cloudEmptyView.style.display = 'block';
+      if (reviewCard) reviewCard.style.display = 'none';
+      if (multiNav) multiNav.style.display = 'none';
+      if (saveBtn) saveBtn.disabled = true;
+      if (skipBtn) skipBtn.style.display = 'none';
+      if (badge) {
+        badge.textContent = 'Queue Empty';
+        badge.style.color = 'var(--text-muted)';
+      }
+      return;
+    }
+
+    if (cloudEmptyView) cloudEmptyView.style.display = 'none';
+
+    parsedSMSTransactions = [];
+    cloudPendingSMS.forEach(item => {
+      const parsed = parseSingleBankSMS(item.text);
+      if (parsed) {
+        parsed.cloudDocId = item.id;
+        parsed.sender = item.sender || 'Bank Alert';
+        parsed.spentBy = item.spentBy || deviceProfile || 'dad';
+        parsedSMSTransactions.push(parsed);
+      }
+    });
+
+    if (parsedSMSTransactions.length === 0) {
+      if (cloudEmptyView) cloudEmptyView.style.display = 'block';
+      if (reviewCard) reviewCard.style.display = 'none';
+      if (multiNav) multiNav.style.display = 'none';
+      if (saveBtn) saveBtn.disabled = true;
+      if (skipBtn) skipBtn.style.display = 'none';
+      return;
+    }
+
+    currentSMSIndex = 0;
+    renderCurrentParsedSMS();
+  }
+
   async function openSMSModal() {
     const modal = document.getElementById('sms-sync-modal');
-    const input = document.getElementById('sms-text-input');
     const catSelect = document.getElementById('sms-parsed-category');
     if (!modal) return;
 
@@ -1882,35 +2030,29 @@
 
     updateSMSMemberSelectorUI();
 
-    // Reset review card
-    document.getElementById('sms-review-card').style.display = 'none';
-    document.getElementById('sms-multi-nav').style.display = 'none';
-    document.getElementById('sms-modal-save-btn').disabled = true;
-    document.getElementById('sms-detected-badge').textContent = 'Ready';
-    document.getElementById('sms-detected-badge').style.color = 'var(--text-muted)';
-    if (input) input.value = '';
-
     modal.classList.add('active');
 
-    // Auto-read clipboard if possible
-    try {
-      if (navigator.clipboard && navigator.clipboard.readText) {
-        const text = await navigator.clipboard.readText();
-        if (text && text.trim().length > 6) {
-          // Check if looks like transaction / bank SMS
-          if (/SAR|SR|AED|USD|\$|mada|purchase|debit|payment|ر\.س|ريال|خصم|شراء/i.test(text)) {
-            input.value = text.trim();
-            handleSMSInput(text.trim());
-            showToast('📋 Auto-pasted bank SMS from clipboard!');
+    // If there are pending cloud SMS from MacroDroid, open directly in Cloud Queue!
+    if (cloudPendingSMS.length > 0) {
+      setSMSModalTab('cloud');
+    } else {
+      setSMSModalTab('manual');
+      // Auto-read clipboard if possible
+      try {
+        if (navigator.clipboard && navigator.clipboard.readText) {
+          const text = await navigator.clipboard.readText();
+          if (text && text.trim().length > 6) {
+            if (/SAR|SR|AED|USD|\$|mada|purchase|debit|payment|ر\.س|ريال|خصم|شراء/i.test(text)) {
+              const input = document.getElementById('sms-text-input');
+              if (input) {
+                input.value = text.trim();
+                handleSMSInput(text.trim());
+                showToast('📋 Auto-pasted bank SMS from clipboard!');
+              }
+            }
           }
         }
-      }
-    } catch (e) {
-      // Clipboard read not permitted without user gesture, user can tap Paste button
-    }
-
-    if (input && !input.value) {
-      setTimeout(() => input.focus(), 150);
+      } catch (e) {}
     }
   }
 
@@ -1942,7 +2084,6 @@
       console.warn('Clipboard read error:', err);
     }
 
-    // Fallback: prompt user to paste
     input.focus();
     input.select();
     showToast('Please press and hold in the box to Paste');
@@ -1980,7 +2121,6 @@
       return;
     }
 
-    // Show Extracted transaction
     renderCurrentParsedSMS();
   }
 
@@ -1992,8 +2132,10 @@
     const reviewCard = document.getElementById('sms-review-card');
     const badge = document.getElementById('sms-detected-badge');
     const saveBtn = document.getElementById('sms-modal-save-btn');
+    const skipBtn = document.getElementById('sms-modal-skip-btn');
     const multiNav = document.getElementById('sms-multi-nav');
     const counterEl = document.getElementById('sms-multi-counter');
+    const senderBadge = document.getElementById('sms-cloud-sender-badge');
 
     const amtInput = document.getElementById('sms-parsed-amount');
     const catSelect = document.getElementById('sms-parsed-category');
@@ -2012,6 +2154,17 @@
     smsSelectedMember = item.spentBy || deviceProfile || 'dad';
     updateSMSMemberSelectorUI();
 
+    if (item.cloudDocId) {
+      if (senderBadge) {
+        senderBadge.style.display = 'inline-block';
+        senderBadge.textContent = `📱 ${item.sender || 'Cloud SMS'}`;
+      }
+      if (skipBtn) skipBtn.style.display = 'block';
+    } else {
+      if (senderBadge) senderBadge.style.display = 'none';
+      if (skipBtn) skipBtn.style.display = 'none';
+    }
+
     if (reviewCard) reviewCard.style.display = 'block';
     if (saveBtn) {
       saveBtn.disabled = false;
@@ -2021,7 +2174,7 @@
     }
 
     if (badge) {
-      badge.textContent = `${parsedSMSTransactions.length} Detected`;
+      badge.textContent = `${parsedSMSTransactions.length} ${item.cloudDocId ? 'Cloud SMS' : 'Detected'}`;
       badge.style.color = 'var(--accent-green)';
     }
 
@@ -2098,6 +2251,12 @@
     triggerHaptic();
     showToast(`✅ ${memInfo.avatar} Added ${settings.currency} ${formatNumber(newTransaction.amount)} in ${catObj.name} from SMS!`, true, newTransaction.id);
 
+    // If this item was from the cloud queue, delete it from pending_sms in Firestore
+    const currentItem = parsedSMSTransactions[currentSMSIndex];
+    if (currentItem && currentItem.cloudDocId) {
+      deletePendingSMSFromCloud(currentItem.cloudDocId);
+    }
+
     // If there are more transactions in the multi-SMS queue
     if (parsedSMSTransactions.length > currentSMSIndex + 1) {
       currentSMSIndex++;
@@ -2105,6 +2264,111 @@
     } else {
       closeSMSModal();
       switchTab('tab-history');
+    }
+  }
+
+  function skipCurrentPendingSMS() {
+    if (!parsedSMSTransactions || parsedSMSTransactions.length === 0) return;
+    const item = parsedSMSTransactions[currentSMSIndex];
+    if (item && item.cloudDocId) {
+      deletePendingSMSFromCloud(item.cloudDocId);
+      triggerHaptic();
+      showToast('🗑️ Dismissed SMS from cloud queue');
+    }
+
+    parsedSMSTransactions.splice(currentSMSIndex, 1);
+    if (parsedSMSTransactions.length > 0) {
+      if (currentSMSIndex >= parsedSMSTransactions.length) {
+        currentSMSIndex = parsedSMSTransactions.length - 1;
+      }
+      renderCurrentParsedSMS();
+    } else {
+      currentSMSIndex = 0;
+      loadCloudPendingSMSToQueue();
+    }
+  }
+
+  // --- MacroDroid Automation Setup Guide Helpers ---
+  function openMacroDroidSetupModal() {
+    const modal = document.getElementById('macrodroid-setup-modal');
+    const urlSpan = document.getElementById('macrodroid-url-text');
+    if (!modal) return;
+
+    const householdId = settings.householdId || DEFAULT_HOUSEHOLD_ID;
+    const webhookUrl = `https://firestore.googleapis.com/v1/projects/spending-tracker-6db2d/databases/(default)/documents/households/${householdId}/pending_sms?key=AIzaSyCZV_am4fczF_wwHI8XtZKepX7uS8kBLl8`;
+    if (urlSpan) urlSpan.textContent = webhookUrl;
+
+    modal.classList.add('active');
+  }
+
+  function closeMacroDroidSetupModal() {
+    const modal = document.getElementById('macrodroid-setup-modal');
+    if (modal) modal.classList.remove('active');
+  }
+
+  function copyMacroDroidURL() {
+    const urlSpan = document.getElementById('macrodroid-url-text');
+    if (urlSpan) {
+      navigator.clipboard.writeText(urlSpan.textContent.trim()).then(() => {
+        triggerHaptic();
+        showToast('📋 Webhook URL copied to clipboard!');
+      }).catch(() => {
+        showToast('Please copy the URL manually');
+      });
+    }
+  }
+
+  function copyMacroDroidBody() {
+    const bodySpan = document.getElementById('macrodroid-body-text');
+    if (bodySpan) {
+      navigator.clipboard.writeText(bodySpan.textContent.trim()).then(() => {
+        triggerHaptic();
+        showToast('📋 JSON Body copied to clipboard!');
+      }).catch(() => {
+        showToast('Please copy the JSON body manually');
+      });
+    }
+  }
+
+  async function sendTestSMSToCloud() {
+    triggerHaptic();
+    const householdId = settings.householdId || DEFAULT_HOUSEHOLD_ID;
+    const now = new Date();
+    const dStr = formatDateYMD(now);
+    const tStr = formatTimeHMS(now).substr(0, 5);
+
+    const sampleSMS = `POS Purchase\nBy: *4460 ;mada Card Atheer\nAmount: SAR 48.50\nFrom: PANDA HYPERMARKET\nOn: ${dStr} ${tStr}`;
+
+    try {
+      if (db) {
+        await db.collection('households').doc(householdId).collection('pending_sms').add({
+          text: sampleSMS,
+          sender: 'ALRAJHI',
+          receivedAt: `${dStr} ${tStr}`,
+          spentBy: deviceProfile || 'dad',
+          createdAt: Date.now()
+        });
+      } else {
+        const url = `https://firestore.googleapis.com/v1/projects/spending-tracker-6db2d/databases/(default)/documents/households/${householdId}/pending_sms?key=AIzaSyCZV_am4fczF_wwHI8XtZKepX7uS8kBLl8`;
+        await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            fields: {
+              text: { stringValue: sampleSMS },
+              sender: { stringValue: 'ALRAJHI' },
+              receivedAt: { stringValue: `${dStr} ${tStr}` },
+              spentBy: { stringValue: deviceProfile || 'dad' }
+            }
+          })
+        });
+      }
+      showToast('🧪 Test bank SMS sent to Cloud Queue! Check your sync list.');
+      closeMacroDroidSetupModal();
+      setSMSModalTab('cloud');
+    } catch (err) {
+      console.error('Failed to send test SMS:', err);
+      showToast('❌ Failed to send test SMS: ' + err.message);
     }
   }
 
@@ -3061,6 +3325,25 @@
     document.getElementById('sms-modal-cancel-btn')?.addEventListener('click', closeSMSModal);
     document.getElementById('sms-sync-modal')?.addEventListener('click', (e) => {
       if (e.target.id === 'sms-sync-modal') closeSMSModal();
+    });
+
+    // SMS Source Tabs & MacroDroid Automation Events
+    document.getElementById('sms-tab-cloud-btn')?.addEventListener('click', () => setSMSModalTab('cloud'));
+    document.getElementById('sms-tab-manual-btn')?.addEventListener('click', () => setSMSModalTab('manual'));
+    document.getElementById('sms-tab-guide-btn')?.addEventListener('click', openMacroDroidSetupModal);
+    document.getElementById('sms-btn-open-guide-from-empty')?.addEventListener('click', openMacroDroidSetupModal);
+    document.getElementById('sms-btn-send-test-cloud')?.addEventListener('click', sendTestSMSToCloud);
+    document.getElementById('sms-btn-switch-to-paste')?.addEventListener('click', () => setSMSModalTab('manual'));
+    document.getElementById('sms-modal-skip-btn')?.addEventListener('click', skipCurrentPendingSMS);
+
+    // MacroDroid Setup Modal Events
+    document.getElementById('macrodroid-close-x-btn')?.addEventListener('click', closeMacroDroidSetupModal);
+    document.getElementById('macrodroid-setup-done-btn')?.addEventListener('click', closeMacroDroidSetupModal);
+    document.getElementById('btn-copy-macrodroid-url')?.addEventListener('click', copyMacroDroidURL);
+    document.getElementById('btn-copy-macrodroid-body')?.addEventListener('click', copyMacroDroidBody);
+    document.getElementById('btn-send-test-sms-cloud')?.addEventListener('click', sendTestSMSToCloud);
+    document.getElementById('macrodroid-setup-modal')?.addEventListener('click', (e) => {
+      if (e.target.id === 'macrodroid-setup-modal') closeMacroDroidSetupModal();
     });
 
     // Budget Manager Events
