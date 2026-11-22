@@ -761,27 +761,60 @@ button:active {
 
 .tx-actions {
   display: flex;
-  gap: 6px;
-  opacity: 0.7;
-}
-
-.tx-card:hover .tx-actions, .tx-actions:focus-within {
-  opacity: 1;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
 }
 
 .tx-action-btn {
-  padding: 4px;
-  border-radius: var(--radius-sm);
-  color: var(--text-muted);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: var(--radius-md);
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  padding: 0;
+  flex-shrink: 0;
 }
 
-.tx-action-btn:hover {
-  color: var(--text-primary);
-  background: rgba(255, 255, 255, 0.1);
+.tx-action-btn svg {
+  width: 16px;
+  height: 16px;
+  stroke-width: 2.2;
+  pointer-events: none;
 }
 
-.tx-action-btn.delete:hover {
-  color: var(--accent-red);
+.tx-action-btn.edit {
+  color: #60a5fa;
+  background: rgba(59, 130, 246, 0.12);
+  border-color: rgba(59, 130, 246, 0.25);
+}
+
+.tx-action-btn.edit:hover,
+.tx-action-btn.edit:active {
+  color: #ffffff;
+  background: #2563eb;
+  border-color: #2563eb;
+  transform: scale(1.05);
+}
+
+.tx-action-btn.delete {
+  color: #f87171;
+  background: rgba(239, 68, 68, 0.12);
+  border-color: rgba(239, 68, 68, 0.25);
+}
+
+.tx-action-btn.delete:hover,
+.tx-action-btn.delete:active {
+  color: #ffffff;
+  background: #dc2626;
+  border-color: #dc2626;
+  transform: scale(1.05);
 }
 
 /* Empty State */
