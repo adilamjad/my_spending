@@ -1786,23 +1786,39 @@
       detectedTime = `${String(hh).padStart(2, '0')}:${mm}:${ss}`;
     }
 
-    // 4. Merchant / Store Extraction
+    // 4. Merchant / Store / Notes Extraction
     let detectedMerchant = '';
-    const merchantPatterns = [
-      /(?:at|to|in|لدى|عبر|merchant:?|pos:?)\s+([A-Za-z0-9\u0600-\u06FF\s&'-]{2,40}?)(?=\s+(?:on|with|card|via|dated|date|balance|available|رصيد|في|بواسطة|\.|\n|$))/i,
-      /(?:at|to|لدى)\s+([A-Za-z0-9\u0600-\u06FF\s&'-]{2,30})/i
-    ];
 
-    for (const pat of merchantPatterns) {
-      const m = text.match(pat);
-      if (m && m[1]) {
-        let clean = m[1].trim()
-          .replace(/^(mada|apple pay|card ending in \d+|visa|mastercard)\s*/i, '')
-          .replace(/[.,;:]+$/, '')
-          .trim();
-        if (clean.length > 1 && !clean.toLowerCase().includes('balance')) {
-          detectedMerchant = clean;
-          break;
+    // A. Explicit labeled fields: From:, من:, Merchant:, Store:, At:, To:, لدى:, عبر:
+    const labeledMatch = text.match(/(?:^|[\n\r;•]|\s)(?:From|من|Merchant|Store|At|To|لدى|عبر)\s*:\s*([A-Za-z0-9\u0600-\u06FF\s&'\.\-\/]{2,50}?)(?=\s+(?:On:|Date:|By:|Card:|With:|Via:|Balance:|Avail|في:|بواسطة:|[\n\r]|$)|[\n\r]|$)/i);
+    if (labeledMatch && labeledMatch[1]) {
+      let clean = labeledMatch[1].trim()
+        .replace(/^(mada|apple pay|card ending in \d+|visa|mastercard)\s*/i, '')
+        .replace(/[.,;:]+$/, '')
+        .trim();
+      if (clean.length > 1 && !clean.toLowerCase().includes('balance') && !clean.toLowerCase().startsWith('account')) {
+        detectedMerchant = clean;
+      }
+    }
+
+    // B. Sentence/prose patterns (e.g., "at PANDA", "لدى صيدلية النهدي", etc.)
+    if (!detectedMerchant) {
+      const merchantPatterns = [
+        /(?:at|to|in|لدى|عبر|merchant:?|pos:?)\s+([A-Za-z0-9\u0600-\u06FF\s&'-]{2,40}?)(?=\s+(?:on|with|card|via|dated|date|balance|available|رصيد|في|بواسطة|\.|[\n\r]|$))/i,
+        /(?:at|to|لدى)\s+([A-Za-z0-9\u0600-\u06FF\s&'-]{2,30})/i
+      ];
+
+      for (const pat of merchantPatterns) {
+        const m = text.match(pat);
+        if (m && m[1]) {
+          let clean = m[1].trim()
+            .replace(/^(mada|apple pay|card ending in \d+|visa|mastercard)\s*/i, '')
+            .replace(/[.,;:]+$/, '')
+            .trim();
+          if (clean.length > 1 && !clean.toLowerCase().includes('balance') && !clean.toLowerCase().startsWith('account')) {
+            detectedMerchant = clean;
+            break;
+          }
         }
       }
     }
