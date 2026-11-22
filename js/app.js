@@ -33,20 +33,20 @@
 
   // Default Monthly Budgets for the 13 Categories (can be edited by user anytime)
   const DEFAULT_BUDGETS = {
-    'rent': 3500,
-    'bills': 600,
-    'groceries': 2000,
-    'school': 3000,
+    'rent': 1250,
+    'bills': 1000,
+    'groceries': 6000,
+    'school': 1600,
     'petrol': 500,
-    'services': 300,
-    'medicine': 250,
-    'pakistan': 1500,
-    'car-installment': 1200,
-    'jeddah-groceries': 800,
+    'services': 200,
+    'medicine': 200,
+    'pakistan': 4000,
+    'car-installment': 1150,
+    'jeddah-groceries': 500,
     'kids': 500,
     'maria': 1000,
-    'iqama': 800,
-    'others': 500
+    'iqama': 1600,
+    'others': 1000
   };
 
   // The Default Categories (Can be customized, added to, or deleted by user)
@@ -301,7 +301,7 @@
       if (saved && FAMILY_MEMBERS.some(m => m.id === saved)) {
         deviceProfile = saved;
       }
-    } catch (e) {}
+    } catch (e) { }
     selectedSpentBy = deviceProfile;
     updateMemberSelectorsUI();
   }
@@ -312,7 +312,7 @@
     selectedSpentBy = memberId;
     try {
       localStorage.setItem(PROFILE_STORAGE_KEY, memberId);
-    } catch (e) {}
+    } catch (e) { }
     updateMemberSelectorsUI();
     const mem = getMemberInfo(memberId);
     showToast(`✅ Profile set to ${mem.avatar} ${mem.name} for this phone`);
@@ -440,7 +440,7 @@
   function saveAlertedThresholds() {
     try {
       localStorage.setItem(ALERTS_KEY, JSON.stringify(alertedThresholds));
-    } catch (e) {}
+    } catch (e) { }
   }
 
   function loadTransactions() {
@@ -560,7 +560,7 @@
 
         try {
           localStorage.setItem(STORAGE_KEY, JSON.stringify(transactions));
-        } catch (e) {}
+        } catch (e) { }
 
         renderTransactionsHistory();
         updateAnalytics();
@@ -933,7 +933,7 @@
     // Filter by Search Query
     if (historySearchQuery) {
       const q = historySearchQuery.toLowerCase();
-      filtered = filtered.filter(tx => 
+      filtered = filtered.filter(tx =>
         (tx.notes && tx.notes.toLowerCase().includes(q)) ||
         (tx.categoryName && tx.categoryName.toLowerCase().includes(q)) ||
         (tx.spentByName && tx.spentByName.toLowerCase().includes(q)) ||
@@ -996,17 +996,17 @@
           </div>
           <div class="transactions-list">
             ${dayTxs.map(tx => {
-              const cat = CATEGORIES.find(c => c.id === tx.categoryId) || {
-                name: tx.categoryName || 'Expense',
-                icon: 'home',
-                color: '#3b82f6',
-                bg: 'rgba(59, 130, 246, 0.15)'
-              };
+        const cat = CATEGORIES.find(c => c.id === tx.categoryId) || {
+          name: tx.categoryName || 'Expense',
+          icon: 'home',
+          color: '#3b82f6',
+          bg: 'rgba(59, 130, 246, 0.15)'
+        };
 
-              const timeDisplay = formatTime12(tx.time);
-              const mem = getMemberInfo(tx.spentBy || 'dad');
+        const timeDisplay = formatTime12(tx.time);
+        const mem = getMemberInfo(tx.spentBy || 'dad');
 
-              return `
+        return `
                 <div class="transaction-card" data-id="${tx.id}">
                   <div class="tx-left">
                     <div class="tx-icon-badge" style="background: ${cat.bg}; color: ${cat.color};">
@@ -1033,7 +1033,7 @@
                   </div>
                 </div>
               `;
-            }).join('')}
+      }).join('')}
           </div>
         </div>
       `;
@@ -1104,7 +1104,7 @@
 
     if (overallTotalBudgetEl) overallTotalBudgetEl.textContent = `${settings.currency} ${formatNumber(totalMonthlyBudget)}`;
     if (overallTotalSpentEl) overallTotalSpentEl.textContent = `${settings.currency} ${formatNumber(totalSpend)}`;
-    
+
     if (overallTotalRemainingEl) {
       if (totalRemaining >= 0) {
         overallTotalRemainingEl.textContent = `${settings.currency} ${formatNumber(totalRemaining)}`;
@@ -1681,8 +1681,8 @@
           // Parse Notes & ID
           const notes = (row[colMap.notes] || '').trim();
           const existingId = (row[colMap.id] || '').trim();
-          const txId = existingId && existingId.length > 3 
-            ? existingId 
+          const txId = existingId && existingId.length > 3
+            ? existingId
             : 'tx_imp_' + Date.now() + '_' + idx + '_' + Math.random().toString(36).substr(2, 4);
 
           // Parse Spent By
@@ -2193,7 +2193,7 @@
             }
           }
         }
-      } catch (e) {}
+      } catch (e) { }
     }
   }
 
@@ -2309,8 +2309,8 @@
     if (reviewCard) reviewCard.style.display = 'block';
     if (saveBtn) {
       saveBtn.disabled = false;
-      saveBtn.textContent = parsedSMSTransactions.length > 1 
-        ? `Save (${currentSMSIndex + 1} of ${parsedSMSTransactions.length})` 
+      saveBtn.textContent = parsedSMSTransactions.length > 1
+        ? `Save (${currentSMSIndex + 1} of ${parsedSMSTransactions.length})`
         : 'Save Expenditure';
     }
 
@@ -2650,14 +2650,14 @@
       const AudioCtx = window.AudioContext || window.webkitAudioContext;
       if (!AudioCtx) return;
       const ctx = new AudioCtx();
-      
-      const freqs = level >= 100 
+
+      const freqs = level >= 100
         ? [880, 698, 880] // Urgent 100% warning chord
-        : level >= 90 
-        ? [784, 880]     // Critical 90% double pulse
-        : level >= 75 
-        ? [659, 784]     // Warning 75% prompt
-        : [523, 659];    // 50% Milestone chime
+        : level >= 90
+          ? [784, 880]     // Critical 90% double pulse
+          : level >= 75
+            ? [659, 784]     // Warning 75% prompt
+            : [523, 659];    // 50% Milestone chime
 
       freqs.forEach((freq, idx) => {
         const osc = ctx.createOscillator();
@@ -2714,21 +2714,21 @@
     if (window.navigator && window.navigator.vibrate) {
       try {
         window.navigator.vibrate(threshold >= 90 ? [120, 60, 120, 60, 150] : [100, 50, 100]);
-      } catch (e) {}
+      } catch (e) { }
     }
 
     // 2. Trigger Real Native Browser Push Notification (if permitted)
     if ('Notification' in window && Notification.permission === 'granted') {
       try {
-        const title = threshold >= 100 
+        const title = threshold >= 100
           ? `🛑 100% Budget Reached: ${categoryObj.name}`
           : threshold >= 90
-          ? `🚨 90% Critical Alert: ${categoryObj.name}`
-          : threshold >= 75
-          ? `⚠️ 75% Budget Warning: ${categoryObj.name}`
-          : `ℹ️ 50% Milestone: ${categoryObj.name}`;
+            ? `🚨 90% Critical Alert: ${categoryObj.name}`
+            : threshold >= 75
+              ? `⚠️ 75% Budget Warning: ${categoryObj.name}`
+              : `ℹ️ 50% Milestone: ${categoryObj.name}`;
 
-        const body = isOver 
+        const body = isOver
           ? `Exceeded monthly budget! Spent: ${settings.currency} ${formatNumber(spent)} of ${settings.currency} ${formatNumber(budget)}.`
           : `Spent: ${settings.currency} ${formatNumber(spent)} of ${settings.currency} ${formatNumber(budget)}. Only ${settings.currency} ${formatNumber(remaining)} remaining.`;
 
@@ -3013,7 +3013,7 @@
     document.documentElement.setAttribute('data-theme', theme);
     const themeIcon = document.getElementById('theme-toggle-btn');
     if (themeIcon) {
-      themeIcon.innerHTML = theme === 'dark' 
+      themeIcon.innerHTML = theme === 'dark'
         ? `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.2 4.2l1.4 1.4M18.4 18.4l1.4 1.4M1 12h2M21 12h2M4.2 19.8l1.4-1.4M18.4 5.6l1.4-1.4"/></svg>`
         : `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>`;
     }
@@ -3147,7 +3147,7 @@
     if (window.navigator && window.navigator.vibrate) {
       try {
         window.navigator.vibrate(12);
-      } catch (e) {}
+      } catch (e) { }
     }
   }
 
@@ -3401,8 +3401,8 @@
     if (!cat) return;
 
     const count = transactions.filter(t => t.categoryId === catId).length;
-    let confirmMsg = count > 0 
-      ? `There are ${count} expenditures recorded in "${cat.name}". Deleting this category will reassign them to "Others". Proceed?` 
+    let confirmMsg = count > 0
+      ? `There are ${count} expenditures recorded in "${cat.name}". Deleting this category will reassign them to "Others". Proceed?`
       : `Delete category "${cat.name}"?`;
 
     if (!confirm(confirmMsg)) return;
