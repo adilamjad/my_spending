@@ -49,8 +49,8 @@
     'others': 500
   };
 
-  // The 14 Categories requested by User
-  const CATEGORIES = [
+  // The Default Categories (Can be customized, added to, or deleted by user)
+  const DEFAULT_CATEGORIES = [
     {
       id: 'rent',
       name: 'Rent',
@@ -165,6 +165,36 @@
     }
   ];
 
+  // Dynamic Categories Array (shared across the app, synced to cloud)
+  let categories = [...DEFAULT_CATEGORIES];
+  const CATEGORIES = categories; // Alias for seamless backward compatibility
+  const CATEGORIES_STORAGE_KEY = 'my_spending_categories_v1';
+
+  function hexToRgba(hex, alpha) {
+    if (!hex) return `rgba(99, 102, 241, ${alpha})`;
+    let c = hex.replace('#', '').trim();
+    if (c.length === 3) c = c.split('').map(x => x + x).join('');
+    if (c.length !== 6) return `rgba(99, 102, 241, ${alpha})`;
+    const num = parseInt(c, 16);
+    const r = (num >> 16) & 255;
+    const g = (num >> 8) & 255;
+    const b = num & 255;
+    return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+  }
+
+  const CATEGORY_COLOR_PRESETS = [
+    '#6366f1', '#10b981', '#3b82f6', '#f59e0b', '#ef4444',
+    '#ec4899', '#06b6d4', '#8b5cf6', '#14b8a6', '#059669',
+    '#fb7185', '#d97706', '#d946ef', '#64748b'
+  ];
+
+  const CATEGORY_ICON_CHOICES = [
+    'shopping-cart', 'utensils', 'coffee', 'home', 'zap', 'fuel', 'car',
+    'pill', 'graduation-cap', 'wrench', 'gift', 'plane', 'briefcase', 'tag',
+    'credit-card', 'wifi', 'tv', 'smile', 'heart', 'shield', 'globe',
+    'dumbbell', 'book', 'music', 'star', 'dollar-sign', 'more-horizontal'
+  ];
+
   // SVG Icons collection
   const ICONS = {
     'more-horizontal': `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="2" fill="currentColor"/><circle cx="19" cy="12" r="2" fill="currentColor"/><circle cx="5" cy="12" r="2" fill="currentColor"/></svg>`,
@@ -181,6 +211,20 @@
     'smile': `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" x2="9.01" y1="9" y2="9"/><line x1="15" x2="15.01" y1="9" y2="9"/></svg>`,
     'heart': `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/></svg>`,
     'shield': `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>`,
+    'coffee': `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8h1a4 4 0 0 1 0 8h-1"/><path d="M2 8h16v9a4 4 0 0 1-4 4H6a4 4 0 0 1-4-4V8z"/><line x1="6" y1="1" x2="6" y2="4"/><line x1="10" y1="1" x2="10" y2="4"/><line x1="14" y1="1" x2="14" y2="4"/></svg>`,
+    'utensils': `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 2v6a3 3 0 0 1-3 3 3 3 0 0 1-3-3V2"/><line x1="15" y1="11" x2="15" y2="22"/><path d="M5 2v10a3 3 0 0 0 3 3 3 3 0 0 0 3-3V2"/><path d="M8 15v7"/></svg>`,
+    'gift': `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 12 20 22 4 22 4 12"/><rect x="2" y="7" width="20" height="5"/><line x1="12" y1="22" x2="12" y2="7"/><path d="M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7z"/><path d="M12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z"/></svg>`,
+    'plane': `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.8 19.2 16 11l3.5-3.5C21 6 21.5 4 21 3c-1-.5-3 0-4.5 1.5L13 8 4.8 6.2c-.5-.1-.9.1-1.1.5l-.3.5c-.2.5-.1 1 .3 1.3L9 12l-2 3H4l-1 1 3 2 2 3 1-1v-3l3-2 3.5 5.3c.3.4.8.5 1.3.3l.5-.2c.4-.3.6-.7.5-1.2z"/></svg>`,
+    'briefcase': `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="14" x="2" y="7" rx="2" ry="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg>`,
+    'tag': `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2H2v10l9.29 9.29c.94.94 2.48.94 3.42 0l6.58-6.58c.94-.94.94-2.48 0-3.42L12 2Z"/><circle cx="7" cy="7" r="1" fill="currentColor"/></svg>`,
+    'credit-card': `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="14" x="2" y="5" rx="2"/><line x1="2" x2="22" y1="10" y2="10"/></svg>`,
+    'wifi': `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.55a11 11 0 0 1 14.08 0"/><path d="M1.42 9a16 16 0 0 1 21.16 0"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><line x1="12" y1="20" x2="12.01" y2="20"/></svg>`,
+    'tv': `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="15" x="2" y="7" rx="2"/><polyline points="17 2 12 7 7 2"/></svg>`,
+    'dumbbell': `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6.5 6.5 11 11"/><path d="m21 21-1-1"/><path d="m3 3 1 1"/><path d="m18 22 4-4"/><path d="m2 6 4-4"/><path d="m3 10 7-7"/><path d="m14 21 7-7"/></svg>`,
+    'book': `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1-2.5-2.5Z"/><path d="M6 2v20"/></svg>`,
+    'music': `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>`,
+    'star': `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>`,
+    'dollar-sign': `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" x2="12" y1="2" y2="22"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>`,
     'check': `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`,
     'trash': `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>`,
     'edit': `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg>`
@@ -188,7 +232,10 @@
 
   // State
   let transactions = [];
-  let selectedCategory = CATEGORIES[0].id;
+  let selectedCategory = DEFAULT_CATEGORIES[0].id;
+  let editingCategoryId = null; // null for add, string for edit
+  let catEditSelectedIcon = 'shopping-cart';
+  let catEditSelectedColor = '#10b981';
   let dateSelectionMode = 'now'; // 'now', 'today', 'yesterday', 'custom'
   let customDateVal = '';
   let customTimeVal = '';
@@ -225,6 +272,7 @@
   // --- Initializer ---
   function init() {
     loadSettings();
+    loadCategories();
     loadDeviceProfile();
     loadTransactions();
     loadAlertedThresholds();
@@ -318,6 +366,64 @@
     if (!skipCloudSync && db) {
       uploadBudgetsToCloud(settings.budgets);
     }
+  }
+
+  // --- Category Persistence & Cloud Sync ---
+  function loadCategories() {
+    try {
+      const saved = localStorage.getItem(CATEGORIES_STORAGE_KEY);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setCategories(parsed);
+          return;
+        }
+      }
+    } catch (e) {
+      console.warn('Failed to load categories from localStorage:', e);
+    }
+    setCategories(DEFAULT_CATEGORIES);
+  }
+
+  function setCategories(newCats) {
+    categories.length = 0;
+    newCats.forEach(c => categories.push(c));
+    if (!categories.some(c => c.id === selectedCategory) && categories.length > 0) {
+      selectedCategory = categories[0].id;
+    }
+  }
+
+  function saveCategories(skipCloudSync = false) {
+    try {
+      localStorage.setItem(CATEGORIES_STORAGE_KEY, JSON.stringify(categories));
+    } catch (e) {
+      console.warn('Failed to save categories to localStorage:', e);
+    }
+
+    if (!skipCloudSync && db) {
+      uploadCategoriesToCloud(categories);
+    }
+
+    renderCategoriesGrid();
+    renderCategoryFilters();
+    renderTransactionsHistory();
+    updateAnalytics();
+    updateCSVPreview();
+    updateMonthSummaryBadge();
+
+    const countHint = document.getElementById('category-section-hint');
+    if (countHint) countHint.textContent = `${categories.length} Categories`;
+    const countSub = document.getElementById('settings-categories-count-sub');
+    if (countSub) countSub.textContent = `${categories.length} Categories configured`;
+  }
+
+  function uploadCategoriesToCloud(catList) {
+    if (!db) return;
+    const householdId = settings.householdId || DEFAULT_HOUSEHOLD_ID;
+    db.collection('households').doc(householdId).collection('settings').doc('categories').set({
+      list: catList,
+      updatedAt: Date.now()
+    }).catch(err => console.warn('Firestore categories upload error:', err));
   }
 
   function loadAlertedThresholds() {
@@ -517,6 +623,22 @@
     }, (err) => {
       console.warn('Firestore pending_sms snapshot error:', err);
     });
+
+    // 4. Listen for shared categories across family devices
+    const categoriesDoc = db.collection('households').doc(householdId).collection('settings').doc('categories');
+    firestoreCategoriesUnsubscribe = categoriesDoc.onSnapshot((doc) => {
+      if (doc.exists) {
+        const cloudData = doc.data();
+        if (cloudData && Array.isArray(cloudData.list) && cloudData.list.length > 0) {
+          setCategories(cloudData.list);
+          saveCategories(true); // save locally without re-uploading
+        }
+      } else if (categories.length > 0) {
+        uploadCategoriesToCloud(categories);
+      }
+    }, (err) => {
+      console.warn('Firestore categories snapshot error:', err);
+    });
   }
 
   function uploadTransactionToCloud(tx) {
@@ -604,7 +726,12 @@
     const grid = document.getElementById('category-grid');
     if (!grid) return;
 
-    grid.innerHTML = CATEGORIES.map((cat) => {
+    // Ensure selectedCategory is valid
+    if (!categories.some(c => c.id === selectedCategory) && categories.length > 0) {
+      selectedCategory = categories[0].id;
+    }
+
+    grid.innerHTML = categories.map((cat) => {
       const isSelected = cat.id === selectedCategory;
       return `
         <button type="button" 
@@ -613,13 +740,18 @@
                 style="--cat-color: ${cat.color}; --cat-bg: ${cat.bg}; --cat-glow: ${cat.glow};"
                 aria-pressed="${isSelected}">
           <div class="category-icon-wrapper">
-            ${ICONS[cat.icon] || ICONS['home']}
+            ${ICONS[cat.icon] || ICONS['tag']}
           </div>
           <span class="category-name">${escapeHTML(cat.name)}</span>
           <span class="category-badge-check">${ICONS['check']}</span>
         </button>
       `;
     }).join('');
+
+    const countHint = document.getElementById('category-section-hint');
+    if (countHint) countHint.textContent = `${categories.length} Categories`;
+    const countSub = document.getElementById('settings-categories-count-sub');
+    if (countSub) countSub.textContent = `${categories.length} Categories configured`;
   }
 
   // --- Render Category Filters in History ---
@@ -1738,14 +1870,23 @@
   };
 
   function guessCategoryFromText(text) {
-    if (!text) return 'others';
+    if (!text) return categories[0]?.id || 'others';
     const low = text.toLowerCase();
     for (const [catId, keywords] of Object.entries(SMS_CATEGORY_KEYWORDS)) {
-      if (keywords.some(kw => low.includes(kw.toLowerCase()))) {
-        return catId;
+      if (categories.some(c => c.id === catId)) {
+        if (keywords.some(kw => low.includes(kw.toLowerCase()))) {
+          return catId;
+        }
       }
     }
-    return 'others';
+    // Match dynamically with any category name
+    for (const cat of categories) {
+      if (low.includes(cat.name.toLowerCase())) {
+        return cat.id;
+      }
+    }
+    const fallback = categories.find(c => c.id === 'others') || categories[0];
+    return fallback ? fallback.id : 'others';
   }
 
   function parseSingleBankSMS(rawText) {
@@ -3048,6 +3189,265 @@
       .replace(/"/g, '&quot;');
   }
 
+  // --- Category Management (Add, Delete, Modify) ---
+  function openCategoryManagerModal() {
+    renderCategoryManagerList();
+    const modal = document.getElementById('category-manager-modal');
+    if (modal) modal.classList.add('active');
+  }
+
+  function closeCategoryManagerModal() {
+    const modal = document.getElementById('category-manager-modal');
+    if (modal) modal.classList.remove('active');
+  }
+
+  function renderCategoryManagerList() {
+    const list = document.getElementById('category-manager-list');
+    if (!list) return;
+
+    if (categories.length === 0) {
+      list.innerHTML = `
+        <div style="text-align: center; padding: 24px; color: var(--text-muted);">
+          No categories configured. Click "+ Add Category" to create one.
+        </div>
+      `;
+      return;
+    }
+
+    list.innerHTML = categories.map(cat => {
+      const budgetVal = Number(settings.budgets[cat.id]) || 0;
+      return `
+        <div class="cat-manager-row" data-id="${cat.id}">
+          <div class="cat-manager-left">
+            <div class="cat-manager-icon" style="background: ${cat.bg}; color: ${cat.color};">
+              ${ICONS[cat.icon] || ICONS['tag']}
+            </div>
+            <div class="cat-manager-info">
+              <div class="cat-manager-name">${escapeHTML(cat.name)}</div>
+              <div class="cat-manager-budget">Budget: ${settings.currency} ${formatNumber(budgetVal)} / mo</div>
+            </div>
+          </div>
+          <div class="cat-manager-actions">
+            <button type="button" class="tx-action-btn edit btn-cat-edit" data-id="${cat.id}" title="Edit ${escapeHTML(cat.name)}" aria-label="Edit category">
+              ${ICONS['edit']}
+            </button>
+            <button type="button" class="tx-action-btn delete btn-cat-delete" data-id="${cat.id}" title="Delete ${escapeHTML(cat.name)}" aria-label="Delete category">
+              ${ICONS['trash']}
+            </button>
+          </div>
+        </div>
+      `;
+    }).join('');
+  }
+
+  function openCategoryEditModal(catId = null) {
+    editingCategoryId = catId;
+    const modal = document.getElementById('category-edit-modal');
+    const titleEl = document.getElementById('category-edit-title');
+    const nameInput = document.getElementById('cat-input-name');
+    const budgetInput = document.getElementById('cat-input-budget');
+    const iconPicker = document.getElementById('cat-icon-picker');
+    const colorPicker = document.getElementById('cat-color-picker');
+
+    if (!modal) return;
+
+    if (catId) {
+      const existing = categories.find(c => c.id === catId);
+      if (existing) {
+        if (titleEl) titleEl.textContent = 'Edit Category';
+        if (nameInput) nameInput.value = existing.name;
+        if (budgetInput) budgetInput.value = settings.budgets[existing.id] || '';
+        catEditSelectedIcon = existing.icon || 'shopping-cart';
+        catEditSelectedColor = existing.color || '#10b981';
+      }
+    } else {
+      if (titleEl) titleEl.textContent = 'Add Category';
+      if (nameInput) nameInput.value = '';
+      if (budgetInput) budgetInput.value = '';
+      catEditSelectedIcon = 'shopping-cart';
+      catEditSelectedColor = '#10b981';
+    }
+
+    // Render Icon choices
+    if (iconPicker) {
+      iconPicker.innerHTML = CATEGORY_ICON_CHOICES.map(iconKey => `
+        <button type="button" class="cat-icon-choice ${iconKey === catEditSelectedIcon ? 'active' : ''}" data-icon="${iconKey}" title="${iconKey}">
+          ${ICONS[iconKey] || ICONS['tag']}
+        </button>
+      `).join('');
+    }
+
+    // Render Color choices
+    if (colorPicker) {
+      colorPicker.innerHTML = CATEGORY_COLOR_PRESETS.map(hex => `
+        <button type="button" class="cat-color-choice ${hex.toLowerCase() === catEditSelectedColor.toLowerCase() ? 'active' : ''}" data-color="${hex}" style="background-color: ${hex};" title="${hex}"></button>
+      `).join('');
+    }
+
+    updateCategoryLivePreview();
+    modal.classList.add('active');
+    setTimeout(() => nameInput?.focus(), 150);
+  }
+
+  function closeCategoryEditModal() {
+    const modal = document.getElementById('category-edit-modal');
+    if (modal) modal.classList.remove('active');
+  }
+
+  function updateCategoryLivePreview() {
+    const nameInput = document.getElementById('cat-input-name');
+    const cardEl = document.getElementById('cat-live-preview-card');
+    const iconEl = document.getElementById('cat-live-preview-icon');
+    const nameEl = document.getElementById('cat-live-preview-name');
+
+    const nameVal = nameInput?.value?.trim() || 'Category Name';
+    const bgVal = hexToRgba(catEditSelectedColor, 0.16);
+    const glowVal = hexToRgba(catEditSelectedColor, 0.35);
+
+    if (cardEl) {
+      cardEl.setAttribute('style', `width: 110px; height: 95px; pointer-events: none; margin: 0 auto; --cat-color: ${catEditSelectedColor}; --cat-bg: ${bgVal}; --cat-glow: ${glowVal};`);
+    }
+
+    if (nameEl) nameEl.textContent = nameVal;
+    if (iconEl) iconEl.innerHTML = ICONS[catEditSelectedIcon] || ICONS['tag'];
+  }
+
+  function saveCategoryFromModal() {
+    const nameInput = document.getElementById('cat-input-name');
+    const budgetInput = document.getElementById('cat-input-budget');
+
+    const rawName = nameInput?.value?.trim();
+    if (!rawName || rawName.length < 2) {
+      showToast('⚠️ Please enter a valid category name (at least 2 characters)');
+      nameInput?.focus();
+      return;
+    }
+
+    const budgetVal = Math.max(0, parseFloat(budgetInput?.value) || 0);
+    const bgVal = hexToRgba(catEditSelectedColor, 0.16);
+    const glowVal = hexToRgba(catEditSelectedColor, 0.35);
+
+    if (editingCategoryId) {
+      // Modify Existing Category
+      const cat = categories.find(c => c.id === editingCategoryId);
+      if (!cat) return;
+
+      const oldName = cat.name;
+      cat.name = rawName;
+      cat.icon = catEditSelectedIcon;
+      cat.color = catEditSelectedColor;
+      cat.bg = bgVal;
+      cat.glow = glowVal;
+
+      settings.budgets[cat.id] = budgetVal;
+
+      // Update transactions if name changed
+      if (oldName !== rawName) {
+        let changed = 0;
+        transactions.forEach(t => {
+          if (t.categoryId === cat.id) {
+            t.categoryName = rawName;
+            changed++;
+            if (db) uploadTransactionToCloud(t);
+          }
+        });
+        if (changed > 0) saveTransactions();
+      }
+
+      saveCategories();
+      saveSettings();
+      if (db) uploadBudgetsToCloud(settings.budgets);
+
+      triggerHaptic();
+      showToast(`✅ Updated "${rawName}" category`);
+    } else {
+      // Add New Category
+      let baseId = rawName.toLowerCase().replace(/[^a-z0-9]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '');
+      if (!baseId || categories.some(c => c.id === baseId)) {
+        baseId = (baseId || 'cat') + '-' + Date.now().toString(36).substr(-4);
+      }
+
+      const newCategory = {
+        id: baseId,
+        name: rawName,
+        icon: catEditSelectedIcon,
+        color: catEditSelectedColor,
+        bg: bgVal,
+        glow: glowVal
+      };
+
+      categories.push(newCategory);
+      settings.budgets[newCategory.id] = budgetVal;
+
+      saveCategories();
+      saveSettings();
+      if (db) uploadBudgetsToCloud(settings.budgets);
+
+      triggerHaptic();
+      showToast(`🎉 Added "${rawName}" category!`);
+    }
+
+    closeCategoryEditModal();
+    renderCategoryManagerList();
+  }
+
+  function deleteCategory(catId) {
+    if (categories.length <= 1) {
+      showToast('⚠️ You must have at least one category');
+      return;
+    }
+
+    const cat = categories.find(c => c.id === catId);
+    if (!cat) return;
+
+    const count = transactions.filter(t => t.categoryId === catId).length;
+    let confirmMsg = count > 0 
+      ? `There are ${count} expenditures recorded in "${cat.name}". Deleting this category will reassign them to "Others". Proceed?` 
+      : `Delete category "${cat.name}"?`;
+
+    if (!confirm(confirmMsg)) return;
+
+    if (count > 0) {
+      const fallbackCat = categories.find(c => c.id === 'others' && c.id !== catId) || categories.find(c => c.id !== catId) || categories[0];
+      transactions.forEach(t => {
+        if (t.categoryId === catId) {
+          t.categoryId = fallbackCat.id;
+          t.categoryName = fallbackCat.name;
+          if (db) uploadTransactionToCloud(t);
+        }
+      });
+      saveTransactions();
+    }
+
+    const idx = categories.findIndex(c => c.id === catId);
+    if (idx !== -1) {
+      categories.splice(idx, 1);
+    }
+    delete settings.budgets[catId];
+
+    if (selectedCategory === catId) {
+      selectedCategory = categories[0]?.id || '';
+    }
+
+    saveCategories();
+    saveSettings();
+    if (db) uploadBudgetsToCloud(settings.budgets);
+
+    renderCategoryManagerList();
+    triggerHaptic();
+    showToast(`🗑️ Deleted category "${cat.name}"`);
+  }
+
+  function resetCategoriesToDefault() {
+    if (confirm('Reset categories back to the original 14 defaults?')) {
+      setCategories(DEFAULT_CATEGORIES);
+      saveCategories();
+      renderCategoryManagerList();
+      triggerHaptic();
+      showToast('↺ Categories reset to defaults');
+    }
+  }
+
   // --- Service Worker Registration ---
   function registerServiceWorker() {
     if ('serviceWorker' in navigator && window.location.protocol.startsWith('http')) {
@@ -3354,6 +3754,64 @@
     document.getElementById('budget-modal-save-btn')?.addEventListener('click', saveAllBudgets);
     document.getElementById('budget-manager-modal')?.addEventListener('click', (e) => {
       if (e.target.id === 'budget-manager-modal') closeBudgetManagerModal();
+    });
+
+    // Category Management Events
+    document.getElementById('btn-quick-manage-categories')?.addEventListener('click', openCategoryManagerModal);
+    document.getElementById('btn-settings-open-categories')?.addEventListener('click', openCategoryManagerModal);
+    document.getElementById('category-manager-done-btn')?.addEventListener('click', closeCategoryManagerModal);
+    document.getElementById('category-manager-modal')?.addEventListener('click', (e) => {
+      if (e.target.id === 'category-manager-modal') closeCategoryManagerModal();
+    });
+
+    document.getElementById('btn-open-add-category')?.addEventListener('click', () => openCategoryEditModal(null));
+    document.getElementById('btn-reset-categories-default')?.addEventListener('click', resetCategoriesToDefault);
+
+    document.getElementById('category-edit-close-x')?.addEventListener('click', closeCategoryEditModal);
+    document.getElementById('category-edit-cancel-btn')?.addEventListener('click', closeCategoryEditModal);
+    document.getElementById('category-edit-modal')?.addEventListener('click', (e) => {
+      if (e.target.id === 'category-edit-modal') closeCategoryEditModal();
+    });
+
+    document.getElementById('cat-input-name')?.addEventListener('input', updateCategoryLivePreview);
+    document.getElementById('category-edit-save-btn')?.addEventListener('click', saveCategoryFromModal);
+
+    // Delegated click for category list Edit & Delete
+    document.getElementById('category-manager-list')?.addEventListener('click', (e) => {
+      const editBtn = e.target.closest('.btn-cat-edit');
+      if (editBtn) {
+        const catId = editBtn.getAttribute('data-id');
+        openCategoryEditModal(catId);
+        return;
+      }
+      const delBtn = e.target.closest('.btn-cat-delete');
+      if (delBtn) {
+        const catId = delBtn.getAttribute('data-id');
+        deleteCategory(catId);
+        return;
+      }
+    });
+
+    // Icon Picker delegation
+    document.getElementById('cat-icon-picker')?.addEventListener('click', (e) => {
+      const choice = e.target.closest('.cat-icon-choice');
+      if (choice) {
+        catEditSelectedIcon = choice.getAttribute('data-icon');
+        document.querySelectorAll('#cat-icon-picker .cat-icon-choice').forEach(b => b.classList.toggle('active', b === choice));
+        updateCategoryLivePreview();
+        triggerHaptic();
+      }
+    });
+
+    // Color Picker delegation
+    document.getElementById('cat-color-picker')?.addEventListener('click', (e) => {
+      const choice = e.target.closest('.cat-color-choice');
+      if (choice) {
+        catEditSelectedColor = choice.getAttribute('data-color');
+        document.querySelectorAll('#cat-color-picker .cat-color-choice').forEach(b => b.classList.toggle('active', b === choice));
+        updateCategoryLivePreview();
+        triggerHaptic();
+      }
     });
 
     // Single Category Quick Budget Modal Events

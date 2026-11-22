@@ -99,9 +99,18 @@
           </div>
 
           <!-- Category Selection -->
-          <div class="section-header">
-            <h2 class="section-title">Select Category</h2>
-            <span class="section-hint">14 Categories</span>
+          <div class="section-header" style="display: flex; justify-content: space-between; align-items: center;">
+            <div style="display: flex; align-items: baseline; gap: 8px;">
+              <h2 class="section-title">Select Category</h2>
+              <span class="section-hint" id="category-section-hint">14 Categories</span>
+            </div>
+            <button type="button" id="btn-quick-manage-categories" style="background: none; border: none; font-size: 0.76rem; font-weight: 600; color: var(--primary-light); cursor: pointer; display: flex; align-items: center; gap: 4px; padding: 4px 6px;">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
+                <path d="M12 2H2v10l9.29 9.29c.94.94 2.48.94 3.42 0l6.58-6.58c.94-.94.94-2.48 0-3.42L12 2Z"/>
+                <circle cx="7" cy="7" r="1" fill="currentColor"/>
+              </svg>
+              <span>Edit Categories</span>
+            </button>
           </div>
 
           <!-- Dynamic Category Grid -->
@@ -469,8 +478,18 @@
 
           <div class="setting-row">
             <div class="setting-info">
+              <span class="setting-label">Manage Categories</span>
+              <span class="setting-sub" id="settings-categories-count-sub">Add, edit, or delete categories</span>
+            </div>
+            <button type="button" class="btn-secondary" id="btn-settings-open-categories" style="padding: 6px 12px; font-size: 0.82rem;">
+              Manage
+            </button>
+          </div>
+
+          <div class="setting-row">
+            <div class="setting-info">
               <span class="setting-label">Category Budgets</span>
-              <span class="setting-sub">Set monthly targets for all 14 categories</span>
+              <span class="setting-sub">Set monthly targets for all categories</span>
             </div>
             <button type="button" class="btn-secondary" id="btn-settings-open-budgets" style="padding: 6px 12px; font-size: 0.82rem;">
               Set Budgets
@@ -1015,6 +1034,105 @@
         <div class="modal-actions">
           <button type="button" class="btn-secondary" id="macrodroid-setup-done-btn" style="width: 100%; padding: 12px;">
             Done / Close Guide
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Category Manager Modal Sheet -->
+    <div id="category-manager-modal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="modal-cat-manager-title">
+      <div class="modal-sheet" style="max-height: 90vh; display: flex; flex-direction: column;">
+        <div class="modal-handle"></div>
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+          <h3 id="modal-cat-manager-title" class="modal-title">Manage Categories</h3>
+          <button type="button" class="btn-primary" id="btn-open-add-category" style="padding: 6px 12px; font-size: 0.78rem;">
+            + Add Category
+          </button>
+        </div>
+        <p class="modal-desc" style="margin-bottom: 12px;">
+          Add custom categories, rename, change icon/color, or delete.
+        </p>
+
+        <!-- Category list -->
+        <div class="category-manager-list" id="category-manager-list">
+          <!-- Populated dynamically via JS -->
+        </div>
+
+        <div class="modal-actions" style="margin-top: auto; padding-top: 10px; display: flex; justify-content: space-between; gap: 8px;">
+          <button type="button" class="btn-secondary" id="btn-reset-categories-default" style="font-size: 0.78rem; color: var(--text-muted);">
+            ↺ Reset Defaults
+          </button>
+          <button type="button" class="btn-primary" id="category-manager-done-btn" style="flex: 1; padding: 12px;">
+            Done
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Add / Edit Category Modal Sheet -->
+    <div id="category-edit-modal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="category-edit-title">
+      <div class="modal-sheet" style="max-height: 92vh; overflow-y: auto;">
+        <div class="modal-handle"></div>
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+          <h3 id="category-edit-title" class="modal-title">Add Category</h3>
+          <button type="button" id="category-edit-close-x" style="background: none; border: none; font-size: 1.2rem; color: var(--text-muted); cursor: pointer;">&times;</button>
+        </div>
+        <p class="modal-desc" style="margin-bottom: 14px;">
+          Customize the name, monthly budget, icon, and theme color.
+        </p>
+
+        <!-- Live Preview -->
+        <label class="form-label" style="font-size: 0.75rem; text-align: center; display: block;">Grid Preview</label>
+        <div style="display: flex; justify-content: center; margin: 6px 0 16px;">
+          <div class="category-card selected" id="cat-live-preview-card" style="width: 110px; height: 95px; pointer-events: none; margin: 0 auto;">
+            <div class="category-icon-wrapper" id="cat-live-preview-icon"></div>
+            <div class="category-name" id="cat-live-preview-name">Category Name</div>
+            <div class="category-badge-check" style="display: flex;">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" width="10" height="10">
+                <polyline points="20 6 9 17 4 12"/>
+              </svg>
+            </div>
+          </div>
+        </div>
+
+        <!-- Category Name -->
+        <div class="form-group" style="margin-bottom: 12px;">
+          <label for="cat-input-name" class="form-label">Category Name</label>
+          <div class="input-field-wrapper">
+            <input type="text" id="cat-input-name" class="text-input" placeholder="e.g. Dining Out, Travel, Gym" maxlength="30" required>
+          </div>
+        </div>
+
+        <!-- Monthly Budget -->
+        <div class="form-group" style="margin-bottom: 12px;">
+          <label for="cat-input-budget" class="form-label">Monthly Target Budget</label>
+          <div class="input-field-wrapper">
+            <span class="currency-symbol" style="margin-right: 6px;">SAR</span>
+            <input type="number" id="cat-input-budget" class="text-input" placeholder="500" step="any" min="0">
+          </div>
+        </div>
+
+        <!-- Choose Icon -->
+        <div class="form-group" style="margin-bottom: 12px;">
+          <label class="form-label">Choose Icon</label>
+          <div class="cat-icon-picker-grid" id="cat-icon-picker">
+            <!-- Rendered via JS -->
+          </div>
+        </div>
+
+        <!-- Choose Color -->
+        <div class="form-group" style="margin-bottom: 16px;">
+          <label class="form-label">Choose Color</label>
+          <div class="cat-color-picker-row" id="cat-color-picker">
+            <!-- Rendered via JS -->
+          </div>
+        </div>
+
+        <!-- Actions -->
+        <div class="modal-actions">
+          <button type="button" class="btn-secondary" id="category-edit-cancel-btn">Cancel</button>
+          <button type="button" class="btn-primary" id="category-edit-save-btn" style="flex: 1; padding: 12px;">
+            Save Category
           </button>
         </div>
       </div>
